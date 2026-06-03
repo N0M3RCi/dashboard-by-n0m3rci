@@ -40,8 +40,8 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
             <img src="/logo.png" alt="N0M3RCi Logo" className="w-full h-full object-cover max-w-full max-h-full block" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-bold text-text-primary tracking-wide truncate">🤖N0M3RCi</p>
-            <p className="text-[10px] text-text-muted uppercase tracking-widest truncate">Admin Panel</p>
+            <p className="text-sm font-bold text-text-primary tracking-wide truncate">🇬🇭 𝐍𝟎𝐌𝟑𝐑𝐂𝐢 🇬🇭</p>
+            <p className="text-[10px] text-text-muted uppercase tracking-widest truncate">Restricted Access</p>
           </div>
         </div>
       </div>

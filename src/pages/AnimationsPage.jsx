@@ -93,7 +93,7 @@ export default function AnimationsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
               <AnimationSelectorCard
                 id="snow"
-                title="Cold Winter Snow"
+                title="Winter Constellation"
                 desc="Calm, chilly falling snow flakes integrated with drifting horizontal mist and fading fog clouds."
                 icon="❄️"
                 active={settings.type === 'snow'}
