@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
 export default function AnimationOverlay() {
   const [settings, setSettings] = useState({
@@ -175,7 +175,6 @@ function ParticlesOverlay({ speed, density, colorTheme, interactive }) {
       // 2. Draw connections/webs
       ctx.globalAlpha = 0.12;
       const maxDistance = 110;
-      const connectionColors = getColors();
 
       for (let i = 0; i < particles.length; i++) {
         for (let j = i + 1; j < particles.length; j++) {
@@ -367,50 +366,113 @@ function SnowOverlay({ speed, density }) {
     class SnowFlake {
       constructor(isInitial = false) {
         this.x = Math.random() * canvas.width;
-        this.y = isInitial ? Math.random() * canvas.height : -15;
-        this.size = Math.random() * 3.8 + 1.2; // Snowflake diameter (1.2px to 5px)
+        this.y = isInitial ? Math.random() * canvas.height : -18;
+        this.size = Math.random() * 3.2 + 1.6; // Slightly larger base for prominent individual flakes (1.6-4.8px)
 
-        // Map 1-100 speed slider to slow falling velocities (0.3px to 2.2px per frame)
-        const s = (speed / 100) * 1.5 + 0.3;
-        this.vy = (Math.random() * 0.4 + 0.6) * s;
-        this.vx = (Math.random() * 0.4 - 0.2) * s; // Light side drift
+        // Speed controls slow graceful descent like real winter: different flakes layer depth parallax
+        const s = (speed / 100) * 1.35 + 0.35;
+        this.vy = (Math.random() * 0.45 + 0.55) * s; // Varied individual fall speeds
+        this.vx = (Math.random() * 0.38 - 0.19) * s;
 
-        this.opacity = Math.random() * 0.4 + 0.35; // 0.35 to 0.75 opacities
-        this.sway = Math.random() * 100;
-        this.swaySpeed = Math.random() * 0.02 + 0.005;
+        this.opacity = Math.random() * 0.38 + 0.42; // Beautiful soft bright whites 0.42-0.8
+        this.sway = Math.random() * 88;
+        this.swaySpeed = Math.random() * 0.018 + 0.0045;
+        this.rotation = Math.random() * Math.PI * 2;
+        this.rotationSpeed = (Math.random() * 0.7 + 0.5) * (s * 0.018); // gentle tumbling
+
+        // Real snow depth simulation: "far" flakes smaller slower higher alpha? or fg ones focus
+        this.depth = Math.random(); // 0 near camera, 1 distant (subtly different tumble/fall used)
+        this.gustPhase = Math.random() * Math.PI * 2;
       }
 
+      // Draw a realistic 6-pointed snowflake with arms, sub-branches, center sparkle
       draw() {
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-
-        // Smooth gradient fill for each flake to simulate realistic blur glow!
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.rotation);
         ctx.globalAlpha = this.opacity;
+        ctx.strokeStyle = '#f8fafc';
         ctx.fillStyle = '#ffffff';
-        ctx.shadowColor = '#ffffff';
-        ctx.shadowBlur = this.size > 3 ? 3 : 0; // Adds glow to larger flakes
+        ctx.lineWidth = Math.max(0.7, this.size / 4.2);
+        ctx.shadowColor = 'rgba(224,242,255,0.6)';
+        ctx.shadowBlur = this.size > 3.4 ? 2.8 : 1.2;
+
+        const len = this.size * (0.95 + this.depth * 0.15);
+        const branchLen = len * 0.42;
+
+        // Central bright spot
+        ctx.beginPath();
+        ctx.arc(0, 0, this.size * 0.26, 0, Math.PI * 2);
         ctx.fill();
-        ctx.shadowBlur = 0; // Reset
+
+        // 6 primary arms
+        for (let i = 0; i < 6; i++) {
+          const angle = (i * Math.PI) / 3;
+          const ax = Math.cos(angle) * len;
+          const ay = Math.sin(angle) * len;
+
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(ax, ay);
+          ctx.stroke();
+
+          // delicate branching tips at 2/3 + end (classic dendrite)
+          const bx = Math.cos(angle) * branchLen * 1.9;
+          const by = Math.sin(angle) * branchLen * 1.9;
+
+          // left subbranch
+          ctx.beginPath();
+          ctx.moveTo(bx * 0.58, by * 0.58);
+          ctx.lineTo(bx * 0.58 + Math.cos(angle - 1.05) * branchLen * 0.65, by * 0.58 + Math.sin(angle - 1.05) * branchLen * 0.65);
+          ctx.stroke();
+
+          // right subbranch
+          ctx.beginPath();
+          ctx.moveTo(bx * 0.58, by * 0.58);
+          ctx.lineTo(bx * 0.58 + Math.cos(angle + 1.05) * branchLen * 0.65, by * 0.58 + Math.sin(angle + 1.05) * branchLen * 0.65);
+          ctx.stroke();
+
+          // tiny tip forks
+          ctx.beginPath();
+          ctx.moveTo(ax * 0.88, ay * 0.88);
+          ctx.lineTo(ax * 0.88 + Math.cos(angle - 0.8) * branchLen * 0.33, ay * 0.88 + Math.sin(angle - 0.8) * branchLen * 0.33);
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(ax * 0.88, ay * 0.88);
+          ctx.lineTo(ax * 0.88 + Math.cos(angle + 0.8) * branchLen * 0.33, ay * 0.88 + Math.sin(angle + 0.8) * branchLen * 0.33);
+          ctx.stroke();
+        }
+
+        ctx.shadowBlur = 0;
+        ctx.restore();
       }
 
-      update() {
-        this.y += this.vy;
-        // Drifting horizontal sway
-        this.x += this.vx + Math.sin(this.sway) * 0.22;
+      update(gust = 0) {
+        const fallMul = 0.92 + this.depth * 0.16;
+        this.y += this.vy * fallMul;
+        // Sway + wind combined realistic gust effect
+        const gustBoost = Math.sin(this.gustPhase) * 0.6 * gust; // gust >0 from external
+        this.x += this.vx + Math.sin(this.sway) * (0.22 + this.depth * 0.08) + gustBoost;
         this.sway += this.swaySpeed;
+        this.gustPhase += 0.021 + (gust * 0.01);
 
-        if (this.y > canvas.height + 15) {
+        // gentle spin tumble (slower for distant flakes)
+        this.rotation += this.rotationSpeed * (1.1 - this.depth * 0.5);
+
+        if (this.y > canvas.height + 18) {
           Object.assign(this, new SnowFlake(false));
         }
-        if (this.x < -15) this.x = canvas.width + 15;
-        if (this.x > canvas.width + 15) this.x = -15;
+        if (this.x < -20) this.x = canvas.width + 20;
+        if (this.x > canvas.width + 20) this.x = -20;
       }
     }
 
     const initSnow = () => {
       flakes = [];
-      const count = Math.floor((density / 100) * 160);
-      for (let i = 0; i < Math.min(count, 350); i++) {
+      // Winter density: allow richer storm when slider maxed, but cap to keep buttery @60fps. Enhanced for more realistic winter storm look with the cold winter foggy mode.
+      const count = Math.floor((density / 100) * 260);
+      for (let i = 0; i < Math.min(count, 650); i++) {
         flakes.push(new SnowFlake(true));
       }
     };
@@ -418,10 +480,24 @@ function SnowOverlay({ speed, density }) {
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
+    let globalGust = 0;
+    let gustTarget = 0;
+    let lastGustAt = 0;
+
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Dynamic windy gusts for ultra realistic snow motion (0 normal, up to ~1.8 occasional blast)
+      const tNow = Date.now();
+      if (tNow - lastGustAt > 1800 + Math.random() * 2900) {
+        gustTarget = (Math.random() > 0.65) ? (0.7 + Math.random() * 1.15) : 0;
+        lastGustAt = tNow;
+      }
+      // Ease gust in/out
+      globalGust += (gustTarget - globalGust) * 0.032;
+
       flakes.forEach((f) => {
-        f.update();
+        f.update(globalGust);
         f.draw();
       });
       animationFrameId = requestAnimationFrame(animate);
@@ -437,22 +513,29 @@ function SnowOverlay({ speed, density }) {
 
   return (
     <>
-      {/* 1. Canvas Snowflakes Layer */}
+      {/* 1. Canvas Snowflakes Layer - 6-pointed tumbling crystalline winter flakes */}
       <canvas
         ref={canvasRef}
         className="pointer-events-none fixed inset-0 z-[2] select-none"
       />
 
-      {/* 2. $3000 Fading Fog and Chilly Winter Mist Overlays */}
+      {/* 2. Thick realistic cold winter fog + mist layers - heavy atmospheric "frosted" feel */}
       <div className="pointer-events-none fixed inset-0 z-[1] select-none overflow-hidden">
-        {/* Subtle center-bottom warmth blending into chilly fog */}
-        <div className="absolute inset-0 bg-radial-[circle_at_50%_100%] from-[rgba(255,255,255,0.015)] via-transparent to-transparent pointer-events-none mix-blend-screen" />
+        {/* Very distant pale blue cold haze - sky simulation */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_48%_12%,rgba(186,215,255,0.045)_0%,transparent_68%)] mix-blend-screen" />
 
-        {/* Dense dynamic fog layer rising from the bottom */}
-        <div className="absolute inset-x-0 bottom-0 h-[50vh] bg-gradient-to-t from-[rgba(255,255,255,0.025)] via-[rgba(255,255,255,0.008)] to-transparent pointer-events-none mix-blend-overlay blur-3xl animate-fog-slow" />
+        {/* Low heavy ground fog bank (thicker denser near floor) */}
+        <div className="absolute bottom-0 inset-x-0 h-[66vh] bg-gradient-to-t from-[rgba(232,242,255,0.075)] via-[rgba(255,255,255,0.032)] via-55% to-transparent pointer-events-none mix-blend-overlay blur-[42px] animate-fog-slow" />
 
-        {/* Full-screen floating horizontal mist drifting */}
-        <div className="absolute inset-0 opacity-[0.035] pointer-events-none mix-blend-screen bg-[radial-gradient(ellipse_at_30%_40%,rgba(255,255,255,0.2)_0%,transparent_65%)] animate-fog-drift" />
+        {/* Mid height swirling slow valley mist */}
+        <div className="absolute inset-x-[6%] bottom-[9vh] h-[43vh] bg-gradient-to-br from-[rgba(255,255,255,0.022)] via-[rgba(232,242,255,0.040)] to-[rgba(255,255,255,0.015)] mix-blend-screen blur-3xl animate-fog-slow" style={{ animationDuration: '26s' }} />
+
+        {/* Large drifting cold banks full screen horizontal travel for immersive winter depth */}
+        <div className="absolute inset-0 opacity-[0.06] pointer-events-none mix-blend-screen bg-[radial-gradient(ellipse_at_42%_38%,rgba(214,233,255,0.45)_0%,transparent_72%)] animate-fog-drift" />
+        <div className="absolute inset-0 opacity-[0.038] pointer-events-none mix-blend-screen bg-[radial-gradient(ellipse_at_68%_59%,rgba(240,248,255,0.32)_0%,transparent_66%)] animate-fog-drift" style={{ animationDuration: '48s', transform: 'scale(1.1)' }} />
+
+        {/* Fine frost/chill particulate haze overlay across entire view for final cold realism */}
+        <div className="absolute inset-0 opacity-[0.022] mix-blend-screen bg-[repeating-radial-gradient(circle_at_center,rgba(250,252,255,0.9)_0,rgba(250,252,255,0.9)_0.6px,transparent_1.4px)]" />
       </div>
     </>
   );

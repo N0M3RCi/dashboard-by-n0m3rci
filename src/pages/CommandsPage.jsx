@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 export default function CommandsPage() {
   const { data, loading, refresh } = useApi('/commands', 30000);
   const [syncing, setSyncing] = useState(false);
+  const [syncFlash, setSyncFlash] = useState(false);
   const [selected, setSelected] = useState(0);
 
   // Edit form state
@@ -24,6 +25,8 @@ export default function CommandsPage() {
   const active = commands[selected] || commands[0];
 
   // Sync edits with active selection
+  // Intentionally syncs local form state from async data / selection.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (active) {
       setEditDesc(active.description || '');
@@ -31,12 +34,15 @@ export default function CommandsPage() {
       setSaveStatus(null);
     }
   }, [active, selected]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleSync = async () => {
     setSyncing(true);
     await apiPost('/sync');
     refresh();
     setSyncing(false);
+    setSyncFlash(true);
+    setTimeout(() => setSyncFlash(false), 1350);
   };
 
   const handleSave = async (e) => {
@@ -103,7 +109,26 @@ export default function CommandsPage() {
   };
 
   if (loading && !data) {
-    return <div className="flex items-center justify-center h-64"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>;
+    return (
+      <div className="space-y-5 animate-in">
+        <div className="flex items-center justify-between">
+          <div className="h-6 w-44 bg-surface-700 rounded animate-pulse" />
+          <div className="h-8 w-24 bg-surface-700 rounded-lg animate-pulse" />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+          <div className="lg:col-span-2 card p-4">
+            <div className="h-4 w-28 bg-surface-600 rounded mb-3 animate-pulse" />
+            {Array.from({length:6}).map((_,i)=><div key={i} className="h-12 bg-surface-700/70 animate-pulse rounded-xl mb-1.5" />)}
+          </div>
+          <div className="lg:col-span-3 card p-5">
+            <div className="h-5 w-48 bg-surface-600 rounded mb-5 animate-pulse" />
+            <div className="space-y-4">
+              <div className="h-9 bg-surface-700 animate-pulse rounded" /><div className="h-9 bg-surface-700 animate-pulse rounded" /><div className="h-20 bg-surface-700 animate-pulse rounded" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -121,9 +146,9 @@ export default function CommandsPage() {
             <Plus size={14} />
             Create Command
           </button>
-          <button onClick={handleSync} disabled={syncing} className="btn-primary text-xs">
+          <button onClick={handleSync} disabled={syncing} className={`btn-primary text-xs ${syncFlash ? 'ring-1 ring-inset ring-primary/70' : ''}`}>
             <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-            Sync list
+            {syncFlash ? 'Synced from TG ✓' : (syncing ? 'Pulling live...' : 'Sync list')}
           </button>
         </div>
       </div>

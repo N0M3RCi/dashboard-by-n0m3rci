@@ -28,7 +28,7 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
 
   return (
     <aside
-      className={`fixed lg:static lg:translate-x-0 top-0 h-screen w-60 lg:w-56 bg-surface-800 border-r border-border flex flex-col z-50 transition-transform duration-200 ${
+      className={`fixed lg:static lg:translate-x-0 top-0 h-screen lg:h-full min-h-0 w-60 lg:w-56 bg-surface-800 border-r border-border flex flex-col z-50 transition-transform duration-200 ${
         mobileOpen ? 'translate-x-0' : '-translate-x-full'
       }`}
     >

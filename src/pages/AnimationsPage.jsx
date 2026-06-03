@@ -1,26 +1,43 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Sparkles, Sliders, Zap, Check, Activity, Palette } from 'lucide-react';
 
 export default function AnimationsPage() {
-  const [settings, setSettings] = useState({
-    type: 'particles', // particles, confetti, snow, none
-    speed: 50,
-    density: 50,
-    colorTheme: 'gold', // gold, neon, cold, multi
-    interactive: true,
+  const [settings, setSettings] = useState(() => {
+    // Lazy initializer avoids setState in effect (fixes react-hooks set-state-in-effect violation)
+    try {
+      const saved = localStorage.getItem('dashboard_animation_settings');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error(e);
+    }
+    return {
+      type: 'particles',
+      speed: 50,
+      density: 50,
+      colorTheme: 'gold',
+      interactive: true,
+    };
   });
   const [successMsg, setSuccessMsg] = useState('');
 
-  // Load initial settings
+  // Only listen for live changes from other tabs / animation settings page (no initial setState here)
   useEffect(() => {
-    const saved = localStorage.getItem('dashboard_animation_settings');
-    if (saved) {
+    const loadSettings = () => {
       try {
-        setSettings(JSON.parse(saved));
+        const saved = localStorage.getItem('dashboard_animation_settings');
+        if (saved) {
+          setSettings(JSON.parse(saved));
+        }
       } catch (e) {
         console.error(e);
       }
-    }
+    };
+    window.addEventListener('animation-settings-changed', loadSettings);
+    window.addEventListener('storage', loadSettings);
+    return () => {
+      window.removeEventListener('animation-settings-changed', loadSettings);
+      window.removeEventListener('storage', loadSettings);
+    };
   }, []);
 
   const handleSave = () => {
@@ -307,7 +324,7 @@ export default function AnimationsPage() {
   );
 }
 
-function AnimationSelectorCard({ id, title, desc, icon, active, onClick }) {
+function AnimationSelectorCard({ id: _id, title, desc, icon, active, onClick }) { // eslint-disable-line no-unused-vars
   return (
     <button
       type="button"
@@ -332,7 +349,7 @@ function AnimationSelectorCard({ id, title, desc, icon, active, onClick }) {
   );
 }
 
-function ThemeSwatchButton({ theme, label, active, colorClass, onClick }) {
+function ThemeSwatchButton({ theme: _theme, label, active, colorClass, onClick }) { // eslint-disable-line no-unused-vars
   return (
     <button
       type="button"

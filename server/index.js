@@ -5,7 +5,8 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
-/* global process — fixes node globals lint when eslint is run repo-wide; server not meant for browser */
+// eslint globals fix for node process (server file)
+ /* global process */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -39,7 +40,7 @@ for (const candidate of volumeCandidates) {
       console.log('📦 Using volume/persistent path for data at', PERSIST_DIR);
       break;
     }
-  } catch {}
+  } catch { /* ignore: optional volume dir or mkdir not critical for boot */ }
 }
 
 if (!PERSIST_DIR) {
@@ -55,7 +56,7 @@ try {
 } catch (e) {
   console.warn('⚠️ Could not ensure persist dir, falling back to /tmp/storage:', e.message);
   PERSIST_DIR = '/tmp/storage';
-  try { fs.mkdirSync(PERSIST_DIR, { recursive: true }); } catch {}
+  try { fs.mkdirSync(PERSIST_DIR, { recursive: true }); } catch { /* ignore */ }
 }
 
 const SETTINGS_FILE = path.join(PERSIST_DIR, 'settings.json');
@@ -197,6 +198,7 @@ try {
   });
 } catch (e) {
   // saveSettings already catches internally; this is just safety
+  void e;
 }
 
 // Model Cost Mapping (Per 1 Million tokens, USD)
@@ -227,7 +229,6 @@ function estimateTokenCost(modelName, tokens) {
 let botInfo = null;
 let lastSyncTime = null;
 let commands = [];
-let updates = [];
 let subscribers = new Map(); // userId -> user data
 let messageLog = []; // { timestamp, chatId, userId, type }
 let commandUsage = {}; // commandName -> count
@@ -261,7 +262,7 @@ function broadcastEvent(type, data) {
     try {
       client.res.write(`data: ${payload}\n\n`);
     } catch (e) {
-      // Client connection dead
+      void e; // Client connection dead
     }
   });
 }
@@ -296,6 +297,10 @@ async function syncBotInfo() {
 }
 
 async function syncCommands() {
+  if (!BOT_TOKEN) {
+    // Graceful no-op for demo / environments without a live bot token: other demo data + cached command edits still usable.
+    return commands;
+  }
   const tgCmds = await tgApi('getMyCommands');
   commands = tgCmds.map(c => ({
     command: '/' + c.command,
@@ -374,6 +379,18 @@ async function getWebhookInfo() {
   return await tgApi('getWebhookInfo');
 }
 
+async function getFullBotMeta() {
+  // Pulls *all* available public config/metadata the BotFather-level control gives via Bot API.
+  // Guarantees the dashboard surfaces the true TG source of truth for commands, names, webhook status, descriptions etc.
+  const m = {};
+  try { m.me = await tgApi('getMe'); } catch (e) { m.meError = e.message; }
+  try { m.description = (await tgApi('getMyDescription')).description || ''; } catch (e) { m.descError = e.message; }
+  try { m.shortDescription = (await tgApi('getMyShortDescription')).short_description || ''; } catch (e) { m.shortDescError = e.message; }
+  try { m.webhook = await tgApi('getWebhookInfo'); } catch (e) { m.webhookError = e.message; }
+  try { m.commands = await tgApi('getMyCommands'); } catch (e) { m.commandsError = e.message; }
+  return m;
+}
+
 // ─── Auth middleware ──────────────────────────────────────
 
 function authMiddleware(req, res, next) {
@@ -401,7 +418,7 @@ app.get('/api/diag', (req, res) => {
   const isUsingPersistentVolume = volumeMounted || /\/app\/storage|\/data|\/mnt\//.test(PERSIST_DIR);
   const analyticsFileExists = fs.existsSync(ANALYTICS_FILE);
   let analyticsFileSize = 0;
-  try { analyticsFileSize = fs.statSync(ANALYTICS_FILE).size; } catch (_) {}
+  try { analyticsFileSize = fs.statSync(ANALYTICS_FILE).size; } catch { /* ignore */ }
 
   res.json({
     status: 'healthy',
@@ -474,7 +491,7 @@ app.post('/api/debug/reset-analytics', (req, res) => {
     fs.writeFileSync(ANALYTICS_FILE, JSON.stringify(emptyState, null, 2), 'utf-8');
 
     // notify any open live dashboard UIs
-    try { broadcastEvent('debug', { message: 'analytics reset' }); } catch {}
+    try { broadcastEvent('debug', { message: 'analytics reset' }); } catch { /* ignore */ }
 
     console.log('🧹 Analytics wiped via /debug/reset-analytics (file + memory)');
     res.json({ success: true, message: 'Analytics state fully reset. Repopulate via bot messages or /api/sync.' });
@@ -593,7 +610,7 @@ app.post('/api/events/report', (req, res) => {
   // Emit a meta update for UI liveness monitors
   try {
     broadcastEvent('ingest-meta', { lastEventReceived, reportCount });
-  } catch {}
+  } catch { /* ignore: optional volume dir or mkdir not critical for boot */ }
 
   res.json({ success: true, isNewUser });
 });
@@ -627,6 +644,16 @@ app.get('/api/bot', authMiddleware, async (req, res) => {
   }
 });
 
+// Full Telegram Bot API snapshot - pulls *all* reachable live config (top-tier "all available data from TG")
+app.get('/api/bot-meta', authMiddleware, async (req, res) => {
+  try {
+    const meta = await getFullBotMeta();
+    res.json({ ...meta, lastSync: lastSyncTime, latency: syncLatency });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Full sync
 app.post('/api/sync', authMiddleware, async (req, res) => {
   try {
@@ -634,6 +661,9 @@ app.post('/api/sync', authMiddleware, async (req, res) => {
     await syncBotInfo();
     await syncCommands();
     const { newMessages, newUsers } = await syncUpdates();
+    // Also pull the "complete metadata snapshot" during sync so any UI using /bot-meta is ready immediately
+    let meta = null;
+    try { meta = await getFullBotMeta(); } catch { /* ignore meta enrichment failure; sync core still ok */ }
     const elapsed = Date.now() - start;
 
     res.json({
@@ -644,6 +674,7 @@ app.post('/api/sync', authMiddleware, async (req, res) => {
       newUsers,
       lastSync: lastSyncTime,
       botInfo,
+      botMeta: meta,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -680,7 +711,7 @@ app.get('/api/overview', authMiddleware, async (req, res) => {
     let webhook = { url: '' };
     try {
       webhook = await getWebhookInfo();
-    } catch (e) {}
+    } catch (e) { void e; }
 
     // Get current Bot Description from Telegram API directly! fall back to persisted creds
     let currentDesc = '';
@@ -688,6 +719,7 @@ app.get('/api/overview', authMiddleware, async (req, res) => {
       const descObj = await tgApi('getMyDescription');
       currentDesc = descObj.description || '';
     } catch (e) {
+      void e;
       currentDesc = BOT_DESCRIPTION || 'Chat 💬 with the world\'s most powerful ⚡ AI models without leaving Telegram';
     }
     if (!currentDesc && BOT_DESCRIPTION) currentDesc = BOT_DESCRIPTION;
@@ -734,13 +766,18 @@ app.get('/api/overview', authMiddleware, async (req, res) => {
 // Subscribers
 app.get('/api/users', authMiddleware, (req, res) => {
   const users = [...subscribers.values()].sort((a, b) => b.lastSeen - a.lastSeen);
-  res.json({ total: users.length, users, lastSync: lastSyncTime });
+  const now = Date.now();
+  const activeToday24h = users.filter(u => now - u.lastSeen < 24 * 60 * 60 * 1000).length;
+  res.json({ total: users.length, users, activeToday24h, lastSync: lastSyncTime });
 });
 
 // Commands
 app.get('/api/commands', authMiddleware, async (req, res) => {
   try {
-    if (commands.length === 0) await syncCommands();
+    // Always re-pull the live registered commands list DIRECTLY from Telegram Bot API.
+    // This guarantees Commands section shows exactly what you configured / all available bot commands instantly.
+    // getMyCommands is extremely fast and cheap so no perf cost for the "a ton of data" reality.
+    await syncCommands();
     // Merge usage counts
     const merged = commands.map(c => {
       const bareCmd = c.command.replace('/', '');
@@ -933,7 +970,7 @@ app.get('/api/settings', authMiddleware, async (req, res) => {
     let webhook = {};
     try {
       webhook = await getWebhookInfo();
-    } catch (e) {}
+    } catch (e) { void e; }
 
     // Fetch display description directly — but fall back to permanently persisted value
     let currentDesc = '';
@@ -941,6 +978,7 @@ app.get('/api/settings', authMiddleware, async (req, res) => {
       const descObj = await tgApi('getMyDescription');
       currentDesc = descObj.description || '';
     } catch (e) {
+      void e;
       currentDesc = BOT_DESCRIPTION || 'Chat 💬 with the world\'s most powerful ⚡ AI models without leaving Telegram';
     }
     if (!currentDesc && BOT_DESCRIPTION) currentDesc = BOT_DESCRIPTION;
@@ -988,7 +1026,7 @@ app.post('/api/settings', authMiddleware, async (req, res) => {
       BOT_TOKEN = botToken;
       TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
       if (BOT_TOKEN) {
-        try { await syncBotInfo(); } catch (_) {}
+        try { await syncBotInfo(); } catch { /* ignore */ }
       }
       logs.push('Bot Token updated (will take effect on next operations)');
 
@@ -998,13 +1036,13 @@ app.post('/api/settings', authMiddleware, async (req, res) => {
           await tgApi('setMyName', { name: BOT_DISPLAY_NAME });
           if (botInfo) botInfo.first_name = BOT_DISPLAY_NAME;
           logs.push(`Display name re-applied from saved: ${BOT_DISPLAY_NAME}`);
-        } catch (e) { logs.push('Note: display re-apply will occur when token is live'); }
+        } catch (e) { void e; logs.push('Note: display re-apply will occur when token is live'); }
       }
       if (BOT_TOKEN && BOT_DESCRIPTION) {
         try {
           await tgApi('setMyDescription', { description: BOT_DESCRIPTION });
           logs.push('Bot description re-applied from saved');
-        } catch (e) {}
+        } catch (e) { void e; }
       }
     }
 
@@ -1018,6 +1056,7 @@ app.post('/api/settings', authMiddleware, async (req, res) => {
             if (botInfo) botInfo.first_name = botDisplayName;
             logs.push(`Display name updated on Telegram to: ${botDisplayName}`);
           } catch (e) {
+            void e;
             logs.push(`Display name saved locally (will sync on valid token): ${botDisplayName}`);
           }
         } else {
@@ -1034,6 +1073,7 @@ app.post('/api/settings', authMiddleware, async (req, res) => {
           await tgApi('setMyDescription', { description: botDescription });
           logs.push('Bot Description updated on Telegram');
         } catch (e) {
+          void e;
           logs.push('Description saved locally (will sync on valid token)');
         }
       } else {
@@ -1050,7 +1090,7 @@ app.post('/api/settings', authMiddleware, async (req, res) => {
         try {
           const info = await getWebhookInfo();
           currentWebhook = info.url || '';
-        } catch (e) {}
+        } catch (e) { void e; }
 
         if (webhookUrl !== currentWebhook) {
           try {
@@ -1062,6 +1102,7 @@ app.post('/api/settings', authMiddleware, async (req, res) => {
               logs.push('Webhook deleted on Telegram; switched to Polling');
             }
           } catch (e) {
+            void e;
             logs.push('Webhook URL saved; will activate on valid bot token');
           }
         }

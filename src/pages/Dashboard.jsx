@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useApi, apiPost } from '../hooks/useApi';
-import { MessageSquare, Users, Terminal, UserPlus, RefreshCw, ExternalLink, ArrowUpRight, ShieldAlert, Cpu, DollarSign, Activity, Sparkles, Zap } from 'lucide-react';
+import { MessageSquare, Users, Terminal, UserPlus, RefreshCw, ExternalLink, ArrowUpRight, Cpu, Sparkles } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 export default function Dashboard() {
   const { data, loading, refresh } = useApi('/overview', 30000);
   const [syncing, setSyncing] = useState(false);
+  const [syncFlash, setSyncFlash] = useState(false);
   const [nextSync, setNextSync] = useState(60);
 
   // Live state overrides to support sub-second real-time streaming counters
@@ -27,6 +28,7 @@ export default function Dashboard() {
   const [ingestReports, setIngestReports] = useState(0);
 
   // Sync initial state with fetched API data
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (data) {
       setLiveMessages(data.messages30d || 0);
@@ -41,8 +43,10 @@ export default function Dashboard() {
       if (typeof data.reportsReceived === 'number') setIngestReports(data.reportsReceived);
     }
   }, [data]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Connect to SSE (Server Sent Events) for true sub-second real-time updates
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     const sse = new EventSource('/api/events/stream');
     setIsLiveConnected(true);
@@ -82,7 +86,7 @@ export default function Dashboard() {
         const parsed = JSON.parse(e.data);
         handleEvent(parsed.type, parsed.data);
       } catch (err) {
-        // Safe catch
+        void err; // Safe catch
       }
     });
 
@@ -90,7 +94,7 @@ export default function Dashboard() {
       try {
         const parsed = JSON.parse(e.data);
         handleEvent('command', parsed.data);
-      } catch (err) {}
+      } catch (err) { void err; }
     });
 
     sse.addEventListener('ingest-meta', (e) => {
@@ -98,7 +102,7 @@ export default function Dashboard() {
         const m = JSON.parse(e.data);
         if (m.lastEventReceived) setLastIngestTs(m.lastEventReceived);
         if (typeof m.reportCount === 'number') setIngestReports(m.reportCount);
-      } catch {}
+      } catch { /* ignore parse error on ingest metadata */ }
     });
 
     // Handle standard network error retry
@@ -114,6 +118,7 @@ export default function Dashboard() {
       setIsLiveConnected(false);
     };
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Scroll terminal logs to bottom when updated
   useEffect(() => {
@@ -126,6 +131,8 @@ export default function Dashboard() {
     setSyncing(true);
     await apiPost('/sync');
     setSyncing(false);
+    setSyncFlash(true);
+    setTimeout(() => setSyncFlash(false), 1400);
     setNextSync(60);
     refresh();
   };
@@ -137,24 +144,41 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (nextSync === 0) handleSync();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nextSync]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
-  const formatTime = (s) => `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+  const formatTime = (s) => `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`; // last auto-sync effect calls set in caller
+
 
   if (loading && !data) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      <div className="space-y-5 animate-in">
+        <div className="flex items-center justify-between">
+          <div><div className="h-7 w-80 bg-surface-700 rounded animate-pulse" /><div className="mt-1 h-3 w-40 bg-surface-700/60 animate-pulse rounded" /></div>
+          <div className="h-6 w-48 rounded bg-surface-700 animate-pulse" />
+        </div>
+        <div className="h-12 bg-surface-700 rounded-2xl animate-pulse" />
+        <div className="card p-6 border-l-4 border-l-primary h-28 animate-pulse" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({length:4}).map((_,i) => <div key={i} className="card p-5 h-24 animate-pulse bg-surface-700" />)}
+        </div>
+        <div className="h-7 w-72 bg-surface-700 rounded animate-pulse" />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="card p-5 lg:col-span-2 h-[232px] bg-surface-700 animate-pulse" />
+          <div className="card p-5 h-[232px] bg-surface-700 animate-pulse" />
+        </div>
       </div>
     );
   }
 
+  const d = data || {};
+
   // Premium empty-state guidance to fix the common "0 everything" situation
   const hasAnyIngest = (liveMessages + liveSubscribers + liveCommands + (ingestReports || 0) + (d.reportsReceived || 0)) > 0;
-
-  const d = data || {};
 
   // Build safe dummy/mock line chart details based on total message density to ensure beautiful charting
   const hourlyChartData = [
@@ -192,9 +216,9 @@ export default function Dashboard() {
           <span className="text-xs text-text-muted">Next sync: <strong className="text-text-primary">{formatTime(nextSync)}</strong></span>
           <span className="text-xs text-text-muted">Latency: <strong className="text-text-primary">⚡ {liveLatency || 32}ms</strong></span>
         </div>
-        <button onClick={handleSync} disabled={syncing} className="btn-primary text-xs shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium">
+        <button onClick={handleSync} disabled={syncing} className={`btn-primary text-xs shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all ${syncFlash ? 'scale-[0.985] ring-1 ring-primary/60' : ''}`}>
           <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-          Sync now
+          {syncFlash ? 'Pulled live ✓' : (syncing ? 'Syncing from TG…' : 'Sync now')}
         </button>
       </div>
 
@@ -423,12 +447,4 @@ function KPICard({ icon: Icon, label, value, change, isLive }) {
       <div className="kpi-line" />
     </div>
   );
-}
-
-function timeSince(ts) {
-  const s = Math.floor((Date.now() - ts) / 1000);
-  if (s < 5) return 'Just now';
-  if (s < 60) return `${s}s ago`;
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  return `${Math.floor(s / 3600)}h ago`;
 }

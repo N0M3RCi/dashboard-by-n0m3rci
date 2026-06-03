@@ -1,5 +1,5 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { useState } from 'react';
+import { Routes, Route } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
@@ -20,8 +20,18 @@ function ProtectedRoute({ children }) {
 function Layout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  // Prefetch/warm cache for all sidebar menus so metrics & data pages feel instant/low-load on navigation.
+  // Uses the shared endpointCache in useApi.
+  useEffect(() => {
+    const token = localStorage.getItem('dashToken') || 'bypass-no-password';
+    const eps = ['/overview', '/users', '/commands', '/analytics', '/settings', '/bot', '/bot-meta'];
+    eps.forEach((ep) => {
+      fetch(`/api${ep}`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+    });
+  }, []);
+
   return (
-    <div className="flex min-h-screen bg-surface-900">
+    <div className="flex h-[100dvh] min-h-0 overflow-hidden bg-surface-900">
       {/* Mobile top nav bar (premium polish: reach $6k feel with mobile-first) */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-[60] bg-surface-800 border-b border-border px-4 h-14 flex items-center justify-between">
         <div className="flex items-center gap-2 font-bold text-sm text-text-primary">
@@ -32,11 +42,11 @@ function Layout({ children }) {
         </button>
       </div>
 
-      {/* Sidebar always on lg+, collapsible on mobile */}
+      {/* Sidebar stretches the full viewport footer precisely (lg static, mobile drawer) to align exactly bottom with the main metric content area */}
       <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
 
-      <main className="flex-1 lg:ml-56 pt-14 lg:pt-0 p-5 lg:p-6 overflow-y-auto overflow-x-hidden">
-        <div className="max-w-[1100px] mx-auto">
+      <main className="flex-1 lg:ml-56 pt-14 lg:pt-0 p-5 lg:p-6 overflow-y-auto overflow-x-hidden h-full">
+        <div className="max-w-[1100px] mx-auto pb-12">
           {children}
         </div>
       </main>

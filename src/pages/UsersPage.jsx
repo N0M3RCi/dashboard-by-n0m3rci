@@ -5,6 +5,7 @@ import { useState } from 'react';
 export default function UsersPage() {
   const { data, loading, refresh } = useApi('/users', 30000);
   const [syncing, setSyncing] = useState(false);
+  const [syncFlash, setSyncFlash] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   const handleSync = async () => {
@@ -12,6 +13,8 @@ export default function UsersPage() {
     await apiPost('/sync');
     refresh();
     setSyncing(false);
+    setSyncFlash(true);
+    setTimeout(() => setSyncFlash(false), 1300);
   };
 
   const handleExportCSV = () => {
@@ -39,16 +42,41 @@ export default function UsersPage() {
     URL.revokeObjectURL(url);
   };
 
+  const users = data?.users || [];
+  const lastSyncDisplay = data ? (data.lastSync ? new Date(data.lastSync).toLocaleString() : "Never") : '';
+  const activeToday = data?.activeToday24h ?? 0;
+
   if (loading && !data) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      <div className="space-y-5 animate-in">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="h-6 w-52 bg-surface-700 rounded animate-pulse" />
+          <div className="h-8 w-28 bg-surface-700 rounded-lg animate-pulse" />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {[1,2,3].map(k => <div key={k} className="card p-4"><div className="h-4 w-24 bg-surface-600 animate-pulse rounded mb-2" /><div className="h-5 w-10 bg-surface-700 animate-pulse rounded" /></div>)}
+        </div>
+
+        <div className="h-9 w-full max-w-md bg-surface-700 animate-pulse rounded-xl" />
+
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b border-border">
+                {['Subscriber','ID','Username','Lang','Msgs','Tokens','Last'].map(h=><th key={h} className="text-left py-3 px-5"><div className="h-3 bg-surface-700 w-14 animate-pulse rounded" /></th>)}
+              </tr></thead>
+              <tbody>
+                {Array.from({length: 7}).map((_, idx) => (
+                  <tr key={idx} className="table-row"><td className="py-3 px-5" colSpan={7}><div className="h-9 bg-surface-700/70 animate-pulse rounded" /></td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     );
   }
-
-  const users = data?.users || [];
-  const lastSyncDisplay = data?.lastSync ? new Date(data.lastSync).toLocaleString() : "Never";
 
   // Filter users based on search query
   const filteredUsers = users.filter(user => {
@@ -71,9 +99,9 @@ export default function UsersPage() {
           <button onClick={handleExportCSV} className="btn-outline text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium">
             Export CSV
           </button>
-          <button onClick={handleSync} disabled={syncing} className="btn-primary text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium">
+          <button onClick={handleSync} disabled={syncing} className={`btn-primary text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium ${syncFlash ? 'ring ring-primary/40' : ''}`}>
             <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-            Sync now
+            {syncFlash ? 'Live TG sync ✓' : syncing ? 'Syncing...' : 'Sync now'}
           </button>
         </div>
       </div>
@@ -98,7 +126,7 @@ export default function UsersPage() {
           <div>
             <p className="text-[11px] text-text-muted font-semibold uppercase">Active Today</p>
             <p className="text-xl font-bold text-text-primary mt-0.5">
-              {users.filter(u => Date.now() - u.lastSeen < 24 * 60 * 60 * 1000).length}
+              {activeToday}
             </p>
           </div>
         </div>

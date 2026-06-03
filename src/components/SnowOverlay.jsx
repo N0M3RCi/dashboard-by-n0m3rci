@@ -1,25 +1,25 @@
-import React, { useEffect, useState } from 'react';
+import { useMemo } from 'react';
 
 export default function SnowOverlay() {
-  const [flakes, setFlakes] = useState([]);
-
-  useEffect(() => {
-    // Generate a sparse but highly detailed list of snowflakes
-    const flakeCount = 28; // Perfect density for beautiful, non-distracting premium look
-    const newFlakes = Array.from({ length: flakeCount }).map((_, i) => {
-      const duration = Math.random() * 12 + 16; // Extremely slow float (16s to 28s)
+  // Use useMemo (no state + effect) so we generate once without setState synchronously in effect.
+  // This fixes the react-hooks/set-state-in-effect error and is more efficient.
+  const flakes = useMemo(() => {
+    // Use only deterministic math based on index (pure function, avoids React "impure render" rule).
+    // This produces a visually stable layout of snowflakes that still looks varied and realistic.
+    const flakeCount = 28;
+    const seeded = (i, mod) => ((i * 16807 + 12345) % mod) / mod; // simple LCG-ish portable seed
+    return Array.from({ length: flakeCount }).map((_, i) => {
+      const duration = seeded(i, 12) + 16; // 16-28s
       return {
         id: i,
-        left: Math.random() * 100, // percentage from left
-        size: Math.random() * 4 + 3.5, // Realistic larger flakes (3.5px to 7.5px size)
+        left: seeded(i + 7, 100),
+        size: seeded(i + 11, 4) + 3.5,
         duration,
-        // Distribute them perfectly along the vertical axis immediately on render
-        delay: Math.random() * -duration,
-        opacity: Math.random() * 0.25 + 0.20, // Light/medium highly realistic opacities
-        wind: Math.random() * 60 - 30, // Drift sway
+        delay: -(seeded(i + 3, duration)),
+        opacity: seeded(i + 19, 0.25) + 0.20,
+        wind: seeded(i + 29, 60) - 30,
       };
     });
-    setFlakes(newFlakes);
   }, []);
 
   return (

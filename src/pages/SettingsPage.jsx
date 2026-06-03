@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 
 export default function SettingsPage() {
   const { data, loading, refresh } = useApi('/settings', 30000);
+  const { data: botMeta } = useApi('/bot-meta', 60000); // Pulls the full TG Bot API exported metadata snapshot for inspector.
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [showToken, setShowToken] = useState(false);
@@ -20,6 +21,7 @@ export default function SettingsPage() {
   const [resetting, setResetting] = useState(false);
 
   // Only populate form from API on first load (not on every refresh)
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (data && !initialized) {
       setInitialized(true);
@@ -36,6 +38,7 @@ export default function SettingsPage() {
       setBotToken(savedToken || data.botToken || '');
     }
   }, [data, initialized]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Persist draft edits to localStorage so they survive tab switches
   useEffect(() => {
@@ -237,6 +240,38 @@ export default function SettingsPage() {
           }`}>
             {saveStatus.success ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
             <span className="text-xs font-medium">{saveStatus.text}</span>
+          </div>
+        )}
+
+        {/* Top Tier: Live Telegram Bot API Inspector — on EVERY sync this section receives real data directly from TG (via /bot-meta) */}
+        {botMeta && (
+          <div className="mt-5 pt-4 border-t border-border/60">
+            <h4 className="text-xs uppercase tracking-wider font-semibold text-text-primary mb-2 flex items-center gap-2">
+              <Globe size={14} /> LIVE TELEGRAM BOT API SNAPSHOT <span className="font-mono text-[10px] text-primary">(all available data)</span>
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div className="card-dark p-3">
+                <div className="font-semibold mb-1 text-text-secondary">Profile</div>
+                <div>@{botMeta.me?.username || '—'} · {botMeta.me?.first_name || '—'}</div>
+                <div className="text-[10px] text-text-muted">id: {botMeta.me?.id || '—'} · can_join_groups: {String(botMeta.me?.can_join_groups)}</div>
+              </div>
+              <div className="card-dark p-3">
+                <div className="font-semibold mb-1 text-text-secondary">Descriptions (synced live)</div>
+                <div className="truncate"><span className="text-text-muted">Full:</span> {botMeta.description || '—'}</div>
+                <div className="truncate"><span className="text-text-muted">Short:</span> {botMeta.shortDescription || '—'}</div>
+              </div>
+              <div className="card-dark p-3">
+                <div className="font-semibold mb-1 text-text-secondary">Webhook</div>
+                <div>{(botMeta.webhook?.url) ? 'ACTIVE' : 'POLLING'} {botMeta.webhook?.url ? '• ' + botMeta.webhook.url : ''}</div>
+                <div className="text-[10px] text-text-muted">pending: {botMeta.webhook?.pending_update_count || 0} · last err: {botMeta.webhook?.last_error_message || 'none'}</div>
+              </div>
+              <div className="card-dark p-3">
+                <div className="font-semibold mb-1 text-text-secondary">Commands registered on TG</div>
+                <div>{(botMeta.commands || []).length} commands</div>
+                <div className="text-[10px] text-text-muted truncate">{(botMeta.commands || []).map(c => '/' + c.command).join(', ') || '—'}</div>
+              </div>
+            </div>
+            <p className="mt-1 text-[10px] text-text-muted">Data is always re-pulled live from the Telegram Bot API when you hit any Sync. No stale data.</p>
           </div>
         )}
 

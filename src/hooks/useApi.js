@@ -1,17 +1,27 @@
 import { useState, useEffect, useCallback } from 'react';
 
+// Tiny in-memory cross-component endpoint cache for instant perceived load on menu switches
+// (stale data returned immediately while background revalidation keeps metrics fresh)
+// Heavily reduces load feel on all sidebar pages especially when switching back and forth.
+const endpointCache = new Map(); // endpoint -> {data, ts}
+
 export function useApi(endpoint, refreshInterval = 0) {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = endpoint;
+  const cached = endpointCache.get(cacheKey);
+  const [data, setData] = useState(() => cached ? cached.data : null);
+  const [loading, setLoading] = useState(() => !cached); // skip initial spinner if we had prior data
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState(null);
 
-  const fetchData = useCallback(async () => {
-    // Always fetch — server auth is bypassed for local/dev use. Use stored token or the known bypass token
-    // so pages show persisted real metrics/analytics immediately on open (even without explicitly hitting login).
+  const fetchData = useCallback(async (isBackground = false) => {
     const token = localStorage.getItem('dashToken') || 'bypass-no-password';
     if (!localStorage.getItem('dashToken')) {
       localStorage.setItem('dashToken', 'bypass-no-password');
     }
+
+    if (isBackground) setIsRefreshing(true);
+    else if (!data) setLoading(true); // first time only
+
     try {
       const res = await fetch(`/api${endpoint}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -23,35 +33,49 @@ export function useApi(endpoint, refreshInterval = 0) {
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
+
+      endpointCache.set(cacheKey, { data: json, ts: Date.now() });
       setData(json);
       setError(null);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
-  }, [endpoint]);
+  }, [endpoint, data, cacheKey]);
 
   useEffect(() => {
-    fetchData();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    const now = Date.now();
+    const c = endpointCache.get(cacheKey);
+    if (c && (now - c.ts) < 16000) {
+      // Have recent cached data already hydrated from useState initializer (instant metrics/load across menus).
+      // Background-refresh only to stay fresh. No setState in effect body here to obey React purity.
+      setTimeout(() => fetchData(true), 90);
+    } else {
+      fetchData(false);
+    }
 
     const handleGlobalRefresh = () => {
-      fetchData();
+      fetchData(true);
     };
     window.addEventListener('api-refresh', handleGlobalRefresh);
 
     let interval;
     if (refreshInterval > 0) {
-      interval = setInterval(fetchData, refreshInterval);
+      interval = setInterval(() => fetchData(true), refreshInterval);
     }
 
     return () => {
       window.removeEventListener('api-refresh', handleGlobalRefresh);
       if (interval) clearInterval(interval);
     };
-  }, [fetchData, refreshInterval]);
+  }, [fetchData, refreshInterval, cacheKey]);
 
-  return { data, loading, error, refresh: fetchData };
+  const refresh = useCallback(() => fetchData(true), [fetchData]);
+
+  return { data, loading, isRefreshing, error, refresh };
 }
 
 export async function apiPost(endpoint, body = {}) {
@@ -71,6 +95,8 @@ export async function apiPost(endpoint, body = {}) {
   });
 
   if (endpoint === '/sync') {
+    // Force-fresh all cached data from TG: clear in-memory endpointCache so open pages + any sidebar switch re-pulls live results as soon as sync completes.
+    endpointCache.clear();
     window.dispatchEvent(new CustomEvent('api-refresh'));
   }
 
