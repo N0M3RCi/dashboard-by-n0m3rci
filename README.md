@@ -1,6 +1,4 @@
-# 🤖 N0M3RCi Admin Dashboard — $6000-Grade Professional Console
-
-**Exact replica + heavy reliability & premium polishing of the original luxury black/gold dashboard for the N0M3RCi Telegram AI Bot.**
+# 🤖 N0M3RCi Dashboard — Professional Admin Console
 
 - **Tabs & layout preserved 100% exactly**: Dashboard • Users • Commands • Analytics • FX Animations • Settings • About
 - **Colors**: Signature matte black (#000/#0a0a0a etc) with premium gold #f5c518, green/red accents — pixel-identical theme tokens.
@@ -8,7 +6,7 @@
 - **Real-time**: Live SSE counters, terminal log stream of bot activity, sub-second KPI updates
 - **Railway-native**: Built, tested and documented to host perfectly on Railway with persistent volumes so data NEVER disappears.
 
-## The "No Data Received" Fix (Critical)
+## 
 
 **Root cause in the ecosystem**:
 - Your bot only **pushes** detailed live event analytics to `https://dashboard.n0m3rci.cc` hard-coded.
@@ -117,7 +115,7 @@ Developed in exact fidelity to the current operating bot & dashboard spec with i
 
 ## Credits
 
-Originals + bot by N0M3RCi (🤖). This polished hardened v2 for Railway ready production by Bud + human iteration.
+Originals + bot by N0M3RCi (🤖). 
 
 ## Next
 
