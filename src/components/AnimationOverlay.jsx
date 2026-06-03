@@ -38,8 +38,10 @@ export default function AnimationOverlay() {
     return null;
   }
 
-  if (settings.type === 'snow') {
-    return <SnowOverlay speed={settings.speed} density={settings.density} />;
+  if (settings.type === 'snow' || settings.type === 'constellation') {
+    // snow was the deprecated cold winter thing. now ALWAYS a beautiful modern color constellation
+    // (for users who had 'snow' saved in localStorage we gracefully upgrade the visual)
+    return <ConstellationOverlay speed={settings.speed} density={settings.density} colorTheme={settings.colorTheme} interactive={settings.interactive} />;
   }
 
   if (settings.type === 'confetti') {
@@ -343,10 +345,14 @@ function ConfettiOverlay({ speed, density, colorTheme }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. SNOW OVERLAY (Sophisticated cold chilly winter with fading fog/mist clouds)
+// 3. CONSTELLATION OVERLAY (replaces cold winter snow)
+//    Modern digital/color constellation: glowing variable stars + vibrant line webs
+//    Exactly same API as ParticlesOverlay so speed/density/colors/interactive just work.
+//    Twinkling high-quality stars and color-matching elegant connections for a premium sigil look.
 // ─────────────────────────────────────────────────────────────────────────────
-function SnowOverlay({ speed, density }) {
+function ConstellationOverlay({ speed, density, colorTheme, interactive }) {
   const canvasRef = useRef(null);
+  const mouseRef = useRef({ x: null, y: null, radius: 160 });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -355,128 +361,178 @@ function SnowOverlay({ speed, density }) {
     if (!ctx) return;
 
     let animationFrameId;
-    let flakes = [];
+    let stars = [];
 
     const resizeCanvas = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
-      initSnow();
+      initStars();
     };
 
-    class SnowFlake {
-      constructor(isInitial = false) {
+    const getColors = () => {
+      switch (colorTheme) {
+        case 'neon':
+          return ['#60a5fa', '#c084fc', '#f472b6', '#34d399'];
+        case 'cold':
+          return ['#bae6fd', '#e0f2fe', '#a5f3fc', '#f0f9ff'];
+        case 'multi':
+          return ['#fcd34d', '#c084fc', '#60a5fa', '#34d399', '#fb7185'];
+        case 'gold':
+        default:
+          return ['#fde047', '#facc15', '#fffbeb', '#f59e0b'];
+      }
+    };
+
+    class Star {
+      constructor() {
         this.x = Math.random() * canvas.width;
-        this.y = isInitial ? Math.random() * canvas.height : -18;
-        this.size = Math.random() * 3.2 + 1.6; // Slightly larger base for prominent individual flakes (1.6-4.8px)
-
-        // Speed controls slow graceful descent like real winter: different flakes layer depth parallax
-        const s = (speed / 100) * 1.35 + 0.35;
-        this.vy = (Math.random() * 0.45 + 0.55) * s; // Varied individual fall speeds
-        this.vx = (Math.random() * 0.38 - 0.19) * s;
-
-        this.opacity = Math.random() * 0.38 + 0.42; // Beautiful soft bright whites 0.42-0.8
-        this.sway = Math.random() * 88;
-        this.swaySpeed = Math.random() * 0.018 + 0.0045;
-        this.rotation = Math.random() * Math.PI * 2;
-        this.rotationSpeed = (Math.random() * 0.7 + 0.5) * (s * 0.018); // gentle tumbling
-
-        // Real snow depth simulation: "far" flakes smaller slower higher alpha? or fg ones focus
-        this.depth = Math.random(); // 0 near camera, 1 distant (subtly different tumble/fall used)
-        this.gustPhase = Math.random() * Math.PI * 2;
+        this.y = Math.random() * canvas.height;
+        const sMul = (speed / 100) * 0.8 + 0.25;
+        this.vx = (Math.random() - 0.5) * sMul * 0.7;
+        this.vy = (Math.random() - 0.5) * sMul * 0.7;
+        this.size = Math.random() * 2.2 + 1.4; // Larger, varied to evoke stars
+        const colors = getColors();
+        this.color = colors[Math.floor(Math.random() * colors.length)];
+        this.opacity = Math.random() * 0.45 + 0.55;
+        this.twinkle = Math.random() * Math.PI * 2;
+        this.twinkleSpeed = 0.04 + Math.random() * 0.035;
+        this.pulse = Math.random() * 0.55 + 0.75;
       }
 
-      // Draw a realistic 6-pointed snowflake with arms, sub-branches, center sparkle
       draw() {
-        ctx.save();
-        ctx.translate(this.x, this.y);
-        ctx.rotate(this.rotation);
-        ctx.globalAlpha = this.opacity;
-        ctx.strokeStyle = '#f8fafc';
-        ctx.fillStyle = '#ffffff';
-        ctx.lineWidth = Math.max(0.7, this.size / 4.2);
-        ctx.shadowColor = 'rgba(224,242,255,0.6)';
-        ctx.shadowBlur = this.size > 3.4 ? 2.8 : 1.2;
+        const tw = 0.68 + Math.sin(this.twinkle) * 0.32 * this.pulse;
+        const alpha = this.opacity * tw;
 
-        const len = this.size * (0.95 + this.depth * 0.15);
-        const branchLen = len * 0.42;
-
-        // Central bright spot
+        // digital soft glow halo (constellations often show faint halos)
         ctx.beginPath();
-        ctx.arc(0, 0, this.size * 0.26, 0, Math.PI * 2);
+        ctx.arc(this.x, this.y, this.size * 2.0, 0, Math.PI * 2);
+        ctx.fillStyle = this.color;
+        ctx.globalAlpha = alpha * 0.15;
         ctx.fill();
 
-        // 6 primary arms
-        for (let i = 0; i < 6; i++) {
-          const angle = (i * Math.PI) / 3;
-          const ax = Math.cos(angle) * len;
-          const ay = Math.sin(angle) * len;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size * 1.2, 0, Math.PI * 2);
+        ctx.globalAlpha = alpha * 0.26;
+        ctx.fill();
 
-          ctx.beginPath();
-          ctx.moveTo(0, 0);
-          ctx.lineTo(ax, ay);
-          ctx.stroke();
-
-          // delicate branching tips at 2/3 + end (classic dendrite)
-          const bx = Math.cos(angle) * branchLen * 1.9;
-          const by = Math.sin(angle) * branchLen * 1.9;
-
-          // left subbranch
-          ctx.beginPath();
-          ctx.moveTo(bx * 0.58, by * 0.58);
-          ctx.lineTo(bx * 0.58 + Math.cos(angle - 1.05) * branchLen * 0.65, by * 0.58 + Math.sin(angle - 1.05) * branchLen * 0.65);
-          ctx.stroke();
-
-          // right subbranch
-          ctx.beginPath();
-          ctx.moveTo(bx * 0.58, by * 0.58);
-          ctx.lineTo(bx * 0.58 + Math.cos(angle + 1.05) * branchLen * 0.65, by * 0.58 + Math.sin(angle + 1.05) * branchLen * 0.65);
-          ctx.stroke();
-
-          // tiny tip forks
-          ctx.beginPath();
-          ctx.moveTo(ax * 0.88, ay * 0.88);
-          ctx.lineTo(ax * 0.88 + Math.cos(angle - 0.8) * branchLen * 0.33, ay * 0.88 + Math.sin(angle - 0.8) * branchLen * 0.33);
-          ctx.stroke();
-
-          ctx.beginPath();
-          ctx.moveTo(ax * 0.88, ay * 0.88);
-          ctx.lineTo(ax * 0.88 + Math.cos(angle + 0.8) * branchLen * 0.33, ay * 0.88 + Math.sin(angle + 0.8) * branchLen * 0.33);
-          ctx.stroke();
-        }
-
-        ctx.shadowBlur = 0;
-        ctx.restore();
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fillStyle = this.color;
+        ctx.globalAlpha = alpha;
+        ctx.fill();
       }
 
-      update(gust = 0) {
-        const fallMul = 0.92 + this.depth * 0.16;
-        this.y += this.vy * fallMul;
-        // Sway + wind combined realistic gust effect
-        const gustBoost = Math.sin(this.gustPhase) * 0.6 * gust; // gust >0 from external
-        this.x += this.vx + Math.sin(this.sway) * (0.22 + this.depth * 0.08) + gustBoost;
-        this.sway += this.swaySpeed;
-        this.gustPhase += 0.021 + (gust * 0.01);
+      update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.twinkle += this.twinkleSpeed;
 
-        // gentle spin tumble (slower for distant flakes)
-        this.rotation += this.rotationSpeed * (1.1 - this.depth * 0.5);
+        // toroidal wrap (beautiful for infinite sky field)
+        if (this.x < 0) this.x = canvas.width;
+        if (this.x > canvas.width) this.x = 0;
+        if (this.y < 0) this.y = canvas.height;
+        if (this.y > canvas.height) this.y = 0;
 
-        if (this.y > canvas.height + 18) {
-          Object.assign(this, new SnowFlake(false));
+        if (interactive && mouseRef.current.x !== null) {
+          const dx = this.x - mouseRef.current.x;
+          const dy = this.y - mouseRef.current.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist < mouseRef.current.radius) {
+            const force = (mouseRef.current.radius - dist) / mouseRef.current.radius;
+            const angle = Math.atan2(dy, dx);
+            const p = Math.cos(angle) * force * 1.2;
+            const q = Math.sin(angle) * force * 1.2;
+            this.x += p;
+            this.y += q;
+          }
         }
-        if (this.x < -20) this.x = canvas.width + 20;
-        if (this.x > canvas.width + 20) this.x = -20;
       }
     }
 
-    const initSnow = () => {
-      flakes = [];
-      // Winter density: realistic high count for dense beautiful falling snow. Cap keeps ultra smooth 60fps while looking like heavy winter snowfall even at 80-100%.
-      // More visible flakes + distance bias = ultra modern photo-realistic falling snow, always renders.
-      const count = Math.floor((density / 100) * 380);
-      for (let i = 0; i < Math.min(count, 780); i++) {
-        flakes.push(new SnowFlake(true));
+    const initStars = () => {
+      stars = [];
+      const area = (canvas.width * canvas.height) / 8800;
+      const target = Math.floor(area * (density / 100) * 0.92);
+      for (let i = 0; i < Math.min(target, 320); i++) {
+        stars.push(new Star());
       }
     };
+
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    const handleMouseMove = (e) => {
+      mouseRef.current.x = e.clientX;
+      mouseRef.current.y = e.clientY;
+    };
+    const handleMouseLeave = () => {
+      mouseRef.current.x = null;
+      mouseRef.current.y = null;
+    };
+    if (interactive) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseleave', handleMouseLeave);
+    }
+
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      stars.forEach((star) => {
+        star.update();
+        star.draw();
+      });
+
+      // artistic constellation lines
+      ctx.globalAlpha = 0.17;
+      const maxD = 138;
+
+      for (let i = 0; i < stars.length; i++) {
+        for (let j = i + 1; j < stars.length; j++) {
+          const a = stars[i];
+          const b = stars[j];
+          const d = Math.hypot(a.x - b.x, a.y - b.y);
+          if (d < maxD) {
+            const aa = Math.max(0.04, (1 - (d / maxD)) * 0.23);
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+            ctx.strokeStyle = a.color;
+            ctx.lineWidth = (d < 52) ? 0.95 : 0.55;
+            ctx.globalAlpha = aa;
+            ctx.stroke();
+          }
+        }
+      }
+
+      ctx.globalAlpha = 1.0;
+      animationFrameId = requestAnimationFrame(animate);
+    };
+
+    animate();
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      window.removeEventListener('resize', resizeCanvas);
+      if (interactive) {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseleave', handleMouseLeave);
+      }
+    };
+  }, [speed, density, colorTheme, interactive]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="pointer-events-none fixed inset-0 z-[1] select-none opacity-90"
+      style={{ mixBlendMode: 'screen' }}
+    />
+  );
+}
+
+// (old snow implementation fully removed/replaced by modern constellation above)
+// ----------------------------------------------------------------
+
+
 
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
