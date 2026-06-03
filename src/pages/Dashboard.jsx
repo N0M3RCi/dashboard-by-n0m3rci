@@ -262,9 +262,9 @@ export default function Dashboard() {
               <span className="badge badge-yellow text-[11px] flex items-center gap-1"><Cpu size={12} /> SMART ROUTING READY</span>
             </div>
             <h2 className="text-xl font-bold text-text-primary truncate">
-              {d.botName || 'N0M3RCi'} <span className="text-text-muted text-sm font-normal">{}</span>
+              {d.botName || 'N0M3RCi'} <span className="text-text-muted text-sm font-normal">{d.botUsername}</span>
             </h2>
-            <p className="text-sm text-text-muted mt-1 line-clamp-2">{|| 'Telegram AI Bot'}</p>
+            <p className="text-sm text-text-muted mt-1 line-clamp-2">{d.botDescription || 'Telegram AI Bot'}</p>
         <a href={`https://t.me/${d.botUsername ? d.botUsername.replace('@','') : 'KwameJr_bot'}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 mt-3 text-xs text-primary hover:text-primary-dark font-medium transition-colors">
               <ExternalLink size={12} /> Open in Telegram
             </a>
@@ -377,7 +377,7 @@ export default function Dashboard() {
             <div className="mb-4">
               <div className="flex items-center justify-between text-[10px] font-medium text-text-muted mb-1.5">
                 <span>Monthly Budget Utilization</span>
-                <span>{((liveTokens * 0.000002 / 10.0) * 100).toFixed(2)}% ($10.00 Limit)</span>
+                <span>{((liveTokens * 0.000002 / 10.0) * 100).toFixed(2)}% ($30.00 Limit)</span>
               </div>
               <div className="w-full h-2 bg-surface-900 rounded-full overflow-hidden border border-border/40">
                 <div
@@ -393,10 +393,10 @@ export default function Dashboard() {
             <span className="text-[10px] text-text-muted font-medium uppercase tracking-wider block mb-2">Smart Model Router</span>
             <div className="space-y-2">
               {[
-                { name: 'gpt-4o', label: 'GPT-4o (Premium)', active: lastModel.startsWith('gpt-4o') && !lastModel.includes('mini') },
-                { name: 'gpt-4o-mini', label: 'GPT-4o-Mini (Core)', active: lastModel.includes('mini') || lastModel === '' },
-                { name: 'claude-3-5-sonnet', label: 'Claude 3.5 Sonnet', active: lastModel.includes('claude') || lastModel.includes('sonnet') },
-                { name: 'o1-mini', label: 'o1-mini / Reasoning', active: lastModel.includes('o1') || lastModel.includes('o3') },
+                { name: 'gpt-4o', label: 'GPT-5 (Premium)', active: lastModel.startsWith('gpt-4o') && !lastModel.includes('mini') },
+                { name: 'gpt-4o-mini', label: 'GPT-5-Mini (Core)', active: lastModel.includes('mini') || lastModel === '' },
+                { name: 'claude Opus 4-7', label: 'Claude 4-6 Sonnet', active: lastModel.includes('claude') || lastModel.includes('sonnet') },
+                { name: 'o1-mini', label: 'QWEN / Reasoning', active: lastModel.includes('o1') || lastModel.includes('o3') },
               ].map((model) => (
                 <div
                   key={model.name}
