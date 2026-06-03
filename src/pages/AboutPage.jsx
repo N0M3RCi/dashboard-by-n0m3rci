@@ -71,9 +71,15 @@ export default function AboutPage() {
         </div>
       </div>
 
+
       {/* Footer */}
       <div className="text-center py-4">
-        <p className="text-xs text-text-muted">🤖N0M3RCi AI Chat Bot · V 1.0.0 · ©2026 All Right Reserved · Built from scratch · No third-party wrappers. </p>
+        <span className="badge badge-yellow text-xs mt-4 inline-block">🇬🇭 𝐃𝐞𝐯𝐞𝐥𝐨𝐩𝐞𝐝 𝐛𝐲 𝐍𝟎𝐌𝟑𝐑𝐂𝐢 🇬🇭</span>
+         <br></br>
+      
+      
+      <br></br>
+        <p className="text-xs text-text-muted"><strong>🤖N0M3RCi AI Chat Bot · V 1.0.0 · ©2026 All Right Reserved · Built From Scratch · No Third Party Wrappers.</strong></p>
       </div>
     </div>
   );

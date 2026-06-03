@@ -225,10 +225,12 @@ export default function Dashboard() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">🤖N0M3RCi Central Console</h1>
-          <p className="text-xs text-text-muted mt-0.5">Real-time metrics from Telegram</p>
+          <h1 className="text-2xl font-bold text-text-primary"></h1>
+          <p className="text-xs text-text-muted mt-0.5"></p>
         </div>
-        <span className="badge badge-yellow">🇬🇭 𝐃𝐞𝐯𝐞𝐥𝐨𝐩𝐞𝐝 𝐛𝐲 𝐍𝟎𝐌𝟑𝐑𝐂𝐢 🇬🇭</span>
+        
+        
+        
       </div>
 
       {/* Sync Bar */}
@@ -260,7 +262,7 @@ export default function Dashboard() {
               <span className="badge badge-yellow text-[11px] flex items-center gap-1"><Cpu size={12} /> SMART ROUTING READY</span>
             </div>
             <h2 className="text-xl font-bold text-text-primary truncate">
-              🤖 {d.botName || 'N0M3RCi'} <span className="text-text-muted text-sm font-normal">{d.botUsername}</span>
+              {d.botName || 'N0M3RCi'} <span className="text-text-muted text-sm font-normal">{d.botUsername}</span>
             </h2>
             <p className="text-sm text-text-muted mt-1 line-clamp-2">{d.botDescription || 'Telegram AI Bot'}</p>
         <a href={`https://t.me/${d.botUsername ? d.botUsername.replace('@','') : 'KwameJr_bot'}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 mt-3 text-xs text-primary hover:text-primary-dark font-medium transition-colors">
@@ -291,7 +293,7 @@ export default function Dashboard() {
         <span>SSE: <span className={isLiveConnected ? 'text-success' : 'text-danger'}>{isLiveConnected ? 'CONNECTED' : 'OFFLINE'}</span></span>
         <span>Reports: <span className="text-text-primary font-semibold">{ingestReports || d.reportsReceived || 0}</span> total</span>
         <span>Last event: <span className="text-text-primary font-semibold">{lastIngestTs || d.lastEventReceived ? new Date(lastIngestTs || d.lastEventReceived).toLocaleTimeString() : 'never (send bot msg)'}</span></span>
-        <span className="text-[10px] text-text-muted/60">• Reports posted by bot to /api/events/report appear here instantly + /diag for details</span>
+        <span className="text-[10px] text-text-muted/60"></span>
       </div>
 
       {/* Professional Setup Guidance — shows only if zero activity yet. This is THE cure for the reported "no data" state */}
