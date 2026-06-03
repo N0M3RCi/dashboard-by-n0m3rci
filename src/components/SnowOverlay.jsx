@@ -27,11 +27,12 @@ export default function SnowOverlay() {
       {/* Light drifting fogs/clouds spreading over the dashboard */}
       <div className="absolute inset-0 bg-radial-[circle_at_50%_120%] from-[rgba(255,255,255,0.015)] via-transparent to-transparent mix-blend-screen pointer-events-none" />
 
-      {/* Dynamic fog layer 1 */}
-      <div className="absolute inset-x-0 bottom-0 h-[60vh] bg-gradient-to-t from-[rgba(255,255,255,0.02)] via-[rgba(255,255,255,0.005)] to-transparent pointer-events-none mix-blend-overlay blur-3xl animate-fog-slow" />
+      {/* Dynamic fog layer 1 - enhanced for realistic cold foggy winter */}
+      <div className="absolute inset-x-0 bottom-0 h-[66vh] bg-gradient-to-t from-[rgba(232,242,255,0.075)] via-[rgba(255,255,255,0.032)] via-55% to-transparent pointer-events-none mix-blend-overlay blur-[42px] animate-fog-slow" />
 
-      {/* Dynamic fog layer 2 (drifting horizontally) */}
-      <div className="absolute inset-0 opacity-[0.03] pointer-events-none mix-blend-screen bg-[radial-gradient(ellipse_at_30%_40%,rgba(255,255,255,0.15)_0%,transparent_60%)] animate-fog-drift" />
+      {/* Dynamic fog layer 2 (drifting horizontally) + ground snow bank */}
+      <div className="absolute inset-0 opacity-[0.045] pointer-events-none mix-blend-screen bg-[radial-gradient(ellipse_at_30%_40%,rgba(255,255,255,0.22)_0%,transparent_60%)] animate-fog-drift" />
+      <div className="absolute bottom-0 inset-x-0 h-[22vh] bg-gradient-to-t from-[rgba(255,255,255,0.08)] via-[rgba(232,242,255,0.045)] to-transparent mix-blend-overlay blur-2xl pointer-events-none" />
 
       {/* Snowflakes */}
       {flakes.map((flake) => (

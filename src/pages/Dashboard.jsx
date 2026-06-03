@@ -31,10 +31,12 @@ export default function Dashboard() {
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (data) {
-      setLiveMessages(data.messages30d || 0);
-      setLiveSubscribers(data.subscribers || 0);
-      setLiveCommands(data.commandsFired || 0);
-      setLiveNewUsers(data.newUsers24h || 0);
+      // Prefer authoritative cycle/display values (so auto 2000 resets + manual resets are reflected immediately)
+      const c = data.cycles || {};
+      setLiveMessages(typeof c.messages === 'number' ? c.messages : (data.messages30d || 0));
+      setLiveSubscribers(typeof c.subscribers === 'number' ? c.subscribers : (data.subscribers || 0));
+      setLiveCommands(typeof c.commands === 'number' ? c.commands : (data.commandsFired || 0));
+      setLiveNewUsers(typeof c.newUsers === 'number' ? c.newUsers : (data.newUsers24h || 0));
       setLiveLatency(data.latency || 0);
       if (data.totalTokens !== undefined) {
         setLiveTokens(data.totalTokens);
@@ -62,22 +64,41 @@ export default function Dashboard() {
       const logMsg = `[${timestamp}] [${type.toUpperCase()}] ${userStr} in ${payload.chat?.type || 'private'}: ${detailStr}${modelStr}${tokenStr}`;
       setLiveLogs(prev => [...prev.slice(-30), logMsg]);
 
-      // Update counters in real-time
-      if (type === 'message' || type === 'command') {
-        setLiveMessages(prev => prev + 1);
-      }
-      if (type === 'command') {
-        setLiveCommands(prev => prev + 1);
-      }
-      if (payload.isNewUser) {
-        setLiveSubscribers(prev => prev + 1);
-        setLiveNewUsers(prev => prev + 1);
+      if (payload.model) {
+        setLastModel(payload.model);
       }
       if (payload.tokens) {
         setLiveTokens(prev => prev + payload.tokens);
       }
-      if (payload.model) {
-        setLastModel(payload.model);
+
+      // Prefer authoritative cycle counts from server payload (attached on every ingest/SSE event).
+      // This ensures 1) sub-second accurate display, 2) resets never missed (client +1 would drift past 2000),
+      // 3) accumulation respects the "no reset BEFORE 2000" + accurate underlying vs display distinction.
+      if (payload.cycles) {
+        const c = payload.cycles;
+        if (typeof c.messages === 'number') setLiveMessages(c.messages);
+        if (typeof c.subscribers === 'number') setLiveSubscribers(c.subscribers);
+        if (typeof c.commands === 'number') setLiveCommands(c.commands);
+        if (typeof c.newUsers === 'number') setLiveNewUsers(c.newUsers);
+      } else if (type === 'reset' && payload.cycles) {
+        // explicit reset type broadcast also authoritative
+        const c = payload.cycles;
+        if (typeof c.messages === 'number') setLiveMessages(c.messages);
+        if (typeof c.subscribers === 'number') setLiveSubscribers(c.subscribers);
+        if (typeof c.commands === 'number') setLiveCommands(c.commands);
+        if (typeof c.newUsers === 'number') setLiveNewUsers(c.newUsers);
+      } else {
+        // Fallback legacy behavior (if server not sending cycles yet for some events)
+        if (type === 'message' || type === 'command') {
+          setLiveMessages(prev => prev + 1);
+        }
+        if (type === 'command') {
+          setLiveCommands(prev => prev + 1);
+        }
+        if (payload.isNewUser) {
+          setLiveSubscribers(prev => prev + 1);
+          setLiveNewUsers(prev => prev + 1);
+        }
       }
     };
 
@@ -102,6 +123,14 @@ export default function Dashboard() {
         const m = JSON.parse(e.data);
         if (m.lastEventReceived) setLastIngestTs(m.lastEventReceived);
         if (typeof m.reportCount === 'number') setIngestReports(m.reportCount);
+        // if meta carries cycles authoritative, apply (for complete reset prop)
+        if (m.cycles) {
+          const c = m.cycles;
+          if (typeof c.messages === 'number') setLiveMessages(c.messages);
+          if (typeof c.subscribers === 'number') setLiveSubscribers(c.subscribers);
+          if (typeof c.commands === 'number') setLiveCommands(c.commands);
+          if (typeof c.newUsers === 'number') setLiveNewUsers(c.newUsers);
+        }
       } catch { /* ignore parse error on ingest metadata */ }
     });
 

@@ -106,12 +106,18 @@ function loadAnalyticsState() {
         // survive server restarts / Railway redeploys (when volume attached).
         lastEventReceived: saved.lastEventReceived || null,
         reportCount: (typeof saved.reportCount === 'number' ? saved.reportCount : 0),
+        // cycle counters (display only)
+        cycleMessages: (typeof saved.cycleMessages === 'number' ? saved.cycleMessages : 0),
+        cycleViews: (typeof saved.cycleViews === 'number' ? saved.cycleViews : 0),
+        cycleSubscribers: (typeof saved.cycleSubscribers === 'number' ? saved.cycleSubscribers : 0),
+        cycleCommands: (typeof saved.cycleCommands === 'number' ? saved.cycleCommands : 0),
+        cycleNewUsers: (typeof saved.cycleNewUsers === 'number' ? saved.cycleNewUsers : 0),
       };
     }
   } catch (e) {
     console.warn('Could not load analytics state:', e.message);
   }
-  return { lastSyncTime: null, updateOffset: 0, commandUsage: {}, messageLog: [], subscribers: new Map(), lastEventReceived: null, reportCount: 0 };
+  return { lastSyncTime: null, updateOffset: 0, commandUsage: {}, messageLog: [], subscribers: new Map(), lastEventReceived: null, reportCount: 0, cycleMessages: 0, cycleViews: 0, cycleSubscribers: 0, cycleCommands: 0, cycleNewUsers: 0 };
 }
 
 function saveAnalyticsState() {
@@ -124,6 +130,12 @@ function saveAnalyticsState() {
       subscribers: Object.fromEntries(subscribers.entries()),
       lastEventReceived,
       reportCount,
+      // Persist cycle display counters (so caps and reset state survive restarts)
+      cycleMessages,
+      cycleViews,
+      cycleSubscribers,
+      cycleCommands,
+      cycleNewUsers,
     };
     fs.writeFileSync(ANALYTICS_FILE, JSON.stringify(toSave, null, 2), 'utf-8');
   } catch (e) {
@@ -240,6 +252,15 @@ let lastEventReceived = null;  // timestamp of last /api/events/report received 
 let reportCount = 0;           // total reports processed this process lifetime
 let webhookModeDetected = false;
 
+// === Cycle display counters (shown in KPI cards on Dashboard). Reset at 2000 automatically for display.
+// The underlying full logs + subscribers map + lifetime messages/commands NEVER reset from this mechanism.
+// Accurate full counts are kept for Analytics/Users and export; only "display value" shown on main console wraps.
+let cycleMessages = 0;
+let cycleViews = 0;
+let cycleSubscribers = 0;
+let cycleCommands = 0;
+let cycleNewUsers = 0;
+
 // Restore persisted metrics/analytics so counts and history survive restarts/reloads (fix for "zero data" forever)
 if (savedAnalytics.lastSyncTime) lastSyncTime = savedAnalytics.lastSyncTime;
 if (savedAnalytics.commandUsage && Object.keys(savedAnalytics.commandUsage).length) commandUsage = { ...savedAnalytics.commandUsage };
@@ -247,6 +268,20 @@ if (savedAnalytics.messageLog && savedAnalytics.messageLog.length) messageLog = 
 if (savedAnalytics.subscribers && savedAnalytics.subscribers.size) subscribers = savedAnalytics.subscribers;
 if (savedAnalytics.lastEventReceived) lastEventReceived = savedAnalytics.lastEventReceived;
 if (typeof savedAnalytics.reportCount === 'number') reportCount = savedAnalytics.reportCount || 0;
+// Restore cycle display caps (default to 0 if not present in file)
+if (typeof savedAnalytics.cycleMessages === 'number') cycleMessages = savedAnalytics.cycleMessages;
+if (typeof savedAnalytics.cycleViews === 'number') cycleViews = savedAnalytics.cycleViews;
+if (typeof savedAnalytics.cycleSubscribers === 'number') cycleSubscribers = savedAnalytics.cycleSubscribers;
+if (typeof savedAnalytics.cycleCommands === 'number') cycleCommands = savedAnalytics.cycleCommands;
+if (typeof savedAnalytics.cycleNewUsers === 'number') cycleNewUsers = savedAnalytics.cycleNewUsers;
+
+// Seed initial display cycle from current lifetime on very first migration (so pre-existing dashboard users don't see artificial 0 on update).
+// After this save will persist explicit cycle values and only +1 / %2000 or explicit 0 thereafter.
+if (typeof savedAnalytics.cycleMessages !== 'number') cycleMessages = (messageLog.length % 2000) || 0;
+if (typeof savedAnalytics.cycleViews !== 'number') cycleViews = (messageLog.length % 2000) || 0;
+if (typeof savedAnalytics.cycleSubscribers !== 'number') cycleSubscribers = (subscribers.size % 2000) || 0;
+if (typeof savedAnalytics.cycleCommands !== 'number') cycleCommands = (Object.values(commandUsage).reduce((a, b) => a + b, 0) % 2000) || 0;
+if (typeof savedAnalytics.cycleNewUsers !== 'number') cycleNewUsers = (subscribers.size % 2000) || 0;
 
 console.log(`📈 Analytics restored: ${messageLog.length} messages, ${subscribers.size} subscribers (from disk)`);
 if (lastEventReceived) {
@@ -336,8 +371,12 @@ async function syncUpdates() {
 
     const user = msg.from;
     if (user && !user.is_bot) {
-      if (!subscribers.has(user.id)) {
+      const isBrandNew = !subscribers.has(user.id);
+      if (isBrandNew) {
         newUsers++;
+        // cycle display subs (wrap at 2000)
+        cycleSubscribers = (cycleSubscribers + 1) % 2000;
+        cycleNewUsers = (cycleNewUsers + 1) % 2000;
       }
       subscribers.set(user.id, {
         id: user.id,
@@ -362,7 +401,12 @@ async function syncUpdates() {
     if (msg.text && msg.text.startsWith('/')) {
       const cmd = msg.text.split(' ')[0].split('@')[0].replace('/', '');
       commandUsage[cmd] = (commandUsage[cmd] || 0) + 1;
+      cycleCommands = (cycleCommands + 1) % 2000;
     }
+
+    // Display cycle counters (wrap at 2000). Full lifetime tracked via messageLog + subscribers Map + commandUsage
+    cycleMessages = (cycleMessages + 1) % 2000;
+    cycleViews = (cycleViews + 1) % 2000;
 
     newMessages++;
   }
@@ -481,12 +525,24 @@ app.post('/api/debug/reset-analytics', (req, res) => {
     updateOffset = 0;
     lastSyncTime = null;
 
+    // Also zero the cycle displays (full wipe implies fresh starts for display metrics too)
+    cycleMessages = 0;
+    cycleViews = 0;
+    cycleSubscribers = 0;
+    cycleCommands = 0;
+    cycleNewUsers = 0;
+
     const emptyState = {
       lastSyncTime: null,
       updateOffset: 0,
       commandUsage: {},
       messageLog: [],
-      subscribers: {}
+      subscribers: {},
+      cycleMessages: 0,
+      cycleViews: 0,
+      cycleSubscribers: 0,
+      cycleCommands: 0,
+      cycleNewUsers: 0
     };
     fs.writeFileSync(ANALYTICS_FILE, JSON.stringify(emptyState, null, 2), 'utf-8');
 
@@ -539,6 +595,13 @@ app.post('/api/events/report', (req, res) => {
     });
   }
 
+  // Bump CYCLE display counters (wrap to 0 at 2000) for dashboard KPIs.
+  // These control the shown numbers. They are independent of the permanent lifetime data (messageLog, full subscribers Map, commandUsage totals etc).
+  if (isNewUser) {
+    cycleSubscribers = (cycleSubscribers + 1) % 2000;
+    cycleNewUsers = (cycleNewUsers + 1) % 2000;
+  }
+
   // 2. Process message log if applicable
   if (message) {
     if (isTokenSpendEvent) {
@@ -569,9 +632,16 @@ app.post('/api/events/report', (req, res) => {
         model: model || null,
       });
 
+      if (!isTokenSpendEvent) {
+        // every real user-authored message bumps the message/views cycle display (will auto clear display at 2000)
+        cycleMessages = (cycleMessages + 1) % 2000;
+        cycleViews = (cycleViews + 1) % 2000;
+      }
+
       if (message.text && message.text.startsWith('/')) {
         const cmd = message.text.split(' ')[0].split('@')[0].replace('/', '');
         commandUsage[cmd] = (commandUsage[cmd] || 0) + 1;
+        cycleCommands = (cycleCommands + 1) % 2000;
       }
     }
   }
@@ -599,7 +669,14 @@ app.post('/api/events/report', (req, res) => {
     text: message?.text || '',
     tokens: tokens || 0,
     model: model || null,
-    isNewUser
+    isNewUser,
+    cycles: {
+      messages: cycleMessages,
+      views: cycleViews,
+      subscribers: cycleSubscribers,
+      commands: cycleCommands,
+      newUsers: cycleNewUsers,
+    }
   };
 
   broadcastEvent(event, sseData);
@@ -609,7 +686,7 @@ app.post('/api/events/report', (req, res) => {
 
   // Emit a meta update for UI liveness monitors
   try {
-    broadcastEvent('ingest-meta', { lastEventReceived, reportCount });
+    broadcastEvent('ingest-meta', { lastEventReceived, reportCount, cycles: { messages: cycleMessages, views: cycleViews, subscribers: cycleSubscribers, commands: cycleCommands, newUsers: cycleNewUsers } });
   } catch { /* ignore: optional volume dir or mkdir not critical for boot */ }
 
   res.json({ success: true, isNewUser });
@@ -690,7 +767,8 @@ app.get('/api/overview', authMiddleware, async (req, res) => {
     const h24 = now - 24 * 60 * 60 * 1000;
     const d30 = now - 30 * 24 * 60 * 60 * 1000;
 
-    const messages30d = messageLog.filter(m => m.timestamp > d30).length;
+    // Full accurate history sizes (used for weekChange analytics, health, full /analytics reports etc)
+    const rawMessages30d = messageLog.filter(m => m.timestamp > d30).length;
     const messages24h = messageLog.filter(m => m.timestamp > h24).length;
     const activeMembers24h = new Set(messageLog.filter(m => m.timestamp > h24).map(m => m.userId)).size;
     const newUsers24h = [...subscribers.values()].filter(u => u.lastSeen > h24).length;
@@ -702,7 +780,14 @@ app.get('/api/overview', authMiddleware, async (req, res) => {
     const lastWeekMsgs = messageLog.filter(m => m.timestamp > w2 && m.timestamp <= w1).length;
     const weekChange = lastWeekMsgs > 0 ? (((thisWeekMsgs - lastWeekMsgs) / lastWeekMsgs) * 100).toFixed(1) : '0.0';
 
-    const commandsFired = Object.values(commandUsage).reduce((a, b) => a + b, 0);
+    const commandsFiredRaw = Object.values(commandUsage).reduce((a, b) => a + b, 0);
+
+    // DISPLAY cycles for dashboard KPI visuals (cap/auto reset to 0 on hitting 2000).
+    // Accurate unlimited data is still fully tracked separately for other pages.
+    const displayMessages = cycleMessages;
+    const displaySubscribers = cycleSubscribers;
+    const displayCommands = cycleCommands;
+    const displayNewUsers = cycleNewUsers;
 
     // Group info
     const groupChats = new Set(messageLog.filter(m => m.type === 'group' || m.type === 'supergroup').map(m => m.chatId));
@@ -737,12 +822,14 @@ app.get('/api/overview', authMiddleware, async (req, res) => {
       botUsername: botInfo?.username || '',
       botDescription: currentDesc || BOT_DESCRIPTION || '',
       isOnline: true,
-      messages30d,
+      // IMPORTANT: these four power the KPI display cards on Dashboard. We return CYCLE values so they auto "reset" visually at 2000.
+      // The accurate raw lifetime/windowed values are still computed but surfaced under raw* / in dedicated /analytics / /users endpoints.
+      messages30d: cycleMessages,
       messages24h,
-      subscribers: subscribers.size,
-      commandsFired,
+      subscribers: cycleSubscribers,
+      commandsFired: cycleCommands,
       activeMembers24h,
-      newUsers24h,
+      newUsers24h: cycleNewUsers,
       weekChange: parseFloat(weekChange),
       groupCount: groupChats.size,
       lastSync: lastSyncTime,
@@ -756,11 +843,82 @@ app.get('/api/overview', authMiddleware, async (req, res) => {
       lastEventAgo: lastEventReceived ? Math.max(0, Math.floor((Date.now() - lastEventReceived) / 1000)) : null,
       reportsReceived: reportCount,
       dataSource: webhook ? (webhook.url ? 'webhook+push-required' : 'polling') : 'unknown',
-      ingestedMessages: messages30d,
+      ingestedMessages: rawMessages30d || messageLog.length,
+      // Expose display cycles + underlying accurate counts so Reset page + others can show "current shown vs lifetime"
+      cycles: {
+        messages: cycleMessages,
+        views: cycleViews,
+        subscribers: cycleSubscribers,
+        commands: cycleCommands,
+        newUsers: cycleNewUsers,
+      },
+      lifetimes: {
+        messages: messageLog.length,
+        subscribers: subscribers.size,
+        commands: Object.values(commandUsage).reduce((a, b) => a + b, 0),
+      },
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// --- Cycle display + selective reset endpoints (powers the new Sidebar "Reset" section) ---
+// GET returns current cycle caps (what is shown on main KPIs) + lifetime accurate values
+app.get('/api/cycles', authMiddleware, (req, res) => {
+  res.json({
+    cycles: {
+      messages: cycleMessages,
+      views: cycleViews,
+      subscribers: cycleSubscribers,
+      commands: cycleCommands,
+      newUsers: cycleNewUsers,
+    },
+    lifetimes: {
+      messages: messageLog.length,
+      subscribers: subscribers.size,
+      commands: Object.values(commandUsage).reduce((a, b) => a + b, 0),
+    },
+    thresholds: {
+      messages: 2000,
+      views: 2000,
+      subscribers: 2000,
+      commands: 2000,
+      newUsers: 2000,
+    },
+  });
+});
+
+// POST selective resets for display cycles only (full backend data untouched)
+app.post('/api/reset', authMiddleware, (req, res) => {
+  const { targets } = req.body || {};
+  if (!Array.isArray(targets) || targets.length === 0) {
+    return res.status(400).json({ success: false, error: 'targets must be a non-empty array e.g. ["messages","subscribers"]' });
+  }
+  const done = [];
+  for (const t of targets) {
+    if (t === 'messages' || t === 'views') {
+      cycleMessages = 0;
+      cycleViews = 0;
+      if (!done.includes('messages')) done.push('messages');
+      if (!done.includes('views')) done.push('views');
+    } else if (t === 'subscribers') {
+      cycleSubscribers = 0;
+      if (!done.includes(t)) done.push(t);
+    } else if (t === 'commands') {
+      cycleCommands = 0;
+      if (!done.includes(t)) done.push(t);
+    } else if (t === 'newUsers') {
+      cycleNewUsers = 0;
+      if (!done.includes(t)) done.push(t);
+    }
+  }
+  try { saveAnalyticsState(); } catch {}
+  // Notify live UIs
+  try {
+    broadcastEvent('reset', { targets: done, cycles: { messages: cycleMessages, views: cycleViews, subscribers: cycleSubscribers, commands: cycleCommands, newUsers: cycleNewUsers } });
+  } catch { /* ignore */ }
+  res.json({ success: true, reset: done });
 });
 
 // Subscribers
@@ -778,16 +936,35 @@ app.get('/api/commands', authMiddleware, async (req, res) => {
     // This guarantees Commands section shows exactly what you configured / all available bot commands instantly.
     // getMyCommands is extremely fast and cheap so no perf cost for the "a ton of data" reality.
     await syncCommands();
-    // Merge usage counts
-    const merged = commands.map(c => {
+
+    // Start with official registered commands (if token present on server; otherwise just [])
+    let all = [...commands];
+
+    // Discover / merge commands that have actually been used in the bot (via reports or sync) but may not be registered yet via setMyCommands/BotFather.
+    // This allows the user to "pick" / sync commands that their telegram bot has actually received, for stats + local templates + registering them from the UI.
+    const registered = new Set(all.map(c => c.command.replace(/^\//, '')));
+    Object.keys(commandUsage).forEach((bare) => {
+      if (!registered.has(bare)) {
+        all.push({
+          command: '/' + bare,
+          description: '(observed usage, not yet registered with /setMyCommands)',
+          uses: commandUsage[bare] || 0,
+          live: false,
+        });
+        registered.add(bare);
+      }
+    });
+
+    // Merge usage + templates
+    const merged = all.map(c => {
       const bareCmd = c.command.replace('/', '');
       return {
         ...c,
-        uses: commandUsage[bareCmd] || 0,
+        uses: commandUsage[bareCmd] || c.uses || 0,
         responseTemplate: customResponses[bareCmd] || `Response for ${c.command}`,
       };
     });
-    res.json({ total: merged.length, live: merged.filter(c => c.live).length, commands: merged, lastSync: lastSyncTime });
+    res.json({ total: merged.length, live: merged.filter(c => c.live !== false).length, commands: merged, lastSync: lastSyncTime });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

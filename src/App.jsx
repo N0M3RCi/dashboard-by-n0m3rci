@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import LoginPage from './pages/LoginPage';
@@ -9,6 +9,7 @@ import AnalyticsPage from './pages/AnalyticsPage';
 import SettingsPage from './pages/SettingsPage';
 import AboutPage from './pages/AboutPage';
 import AnimationsPage from './pages/AnimationsPage';
+import ResetPage from './pages/ResetPage';
 import AnimationOverlay from './components/AnimationOverlay';
 import { Menu, X } from 'lucide-react';
 
@@ -24,7 +25,7 @@ function Layout({ children }) {
   // Uses the shared endpointCache in useApi.
   useEffect(() => {
     const token = localStorage.getItem('dashToken') || 'bypass-no-password';
-    const eps = ['/overview', '/users', '/commands', '/analytics', '/settings', '/bot', '/bot-meta'];
+    const eps = ['/overview', '/users', '/commands', '/analytics', '/settings', '/bot', '/bot-meta', '/cycles'];
     eps.forEach((ep) => {
       fetch(`/api${ep}`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
     });
@@ -66,7 +67,9 @@ export default function App() {
         <Route path="/analytics" element={<ProtectedRoute><Layout><AnalyticsPage /></Layout></ProtectedRoute>} />
         <Route path="/animations" element={<ProtectedRoute><Layout><AnimationsPage /></Layout></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><Layout><SettingsPage /></Layout></ProtectedRoute>} />
+        <Route path="/reset" element={<ProtectedRoute><Layout><ResetPage /></Layout></ProtectedRoute>} />
         <Route path="/about" element={<ProtectedRoute><Layout><AboutPage /></Layout></ProtectedRoute>} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>
   );

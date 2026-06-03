@@ -3,7 +3,7 @@ import { RefreshCw, Zap, Terminal, Plus, Trash2, CheckCircle, AlertCircle } from
 import { useState, useEffect } from 'react';
 
 export default function CommandsPage() {
-  const { data, loading, refresh } = useApi('/commands', 30000);
+  const { data, loading, refresh, error } = useApi('/commands', 30000);
   const [syncing, setSyncing] = useState(false);
   const [syncFlash, setSyncFlash] = useState(false);
   const [selected, setSelected] = useState(0);
@@ -140,6 +140,7 @@ export default function CommandsPage() {
           <span className="badge badge-green text-[11px]">{data?.total || 0} total</span>
           <span className="badge badge-yellow text-[11px]"><Zap size={10} /> {data?.live || 0} live</span>
           <span className="text-xs text-text-muted">Last sync: <strong className="text-primary">{data?.lastSync ? timeSince(data.lastSync) : 'Never'}</strong></span>
+          {error && <span className="badge badge-red text-[10px] ml-2">Error: {error}</span>}
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowCreate(!showCreate)} className="btn-outline text-xs">
@@ -211,6 +212,11 @@ export default function CommandsPage() {
             <span className="text-[11px] text-text-muted">{commands.length} registered</span>
           </div>
           <div className="space-y-1 max-h-[500px] overflow-y-auto scroll-container pr-1">
+            {commands.length === 0 && (
+              <div className="text-xs text-text-muted p-3 bg-surface-800 rounded">
+                No registered or observed commands yet.<br />Configure your bot token in <a href="/settings" className="text-primary underline">Settings</a> to pull registered ones, or wait for users to trigger commands (they'll appear here as "OBSERVED").
+              </div>
+            )}
             {commands.map((cmd, idx) => (
               <button
                 key={cmd.command}
@@ -224,7 +230,11 @@ export default function CommandsPage() {
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="text-xs text-text-muted shrink-0">{'>'}_</span>
                   <span className="text-sm font-medium text-text-primary truncate">{cmd.command}</span>
-                  <span className="badge badge-yellow text-[9px] py-0 px-1.5 shrink-0"><Zap size={8} />LIVE</span>
+                  {cmd.live !== false ? (
+                    <span className="badge badge-yellow text-[9px] py-0 px-1.5 shrink-0"><Zap size={8} />LIVE</span>
+                  ) : (
+                    <span className="badge badge-neutral text-[9px] py-0 px-1.5 shrink-0">OBSERVED</span>
+                  )}
                 </div>
                 <p className="text-xs text-text-muted mt-0.5 ml-5 truncate">{cmd.description}</p>
                 <p className="text-[11px] text-text-muted ml-5 opacity-60">{cmd.uses ? `${cmd.uses.toLocaleString()} uses` : '0 uses'}</p>
@@ -256,9 +266,17 @@ export default function CommandsPage() {
                   >
                     <Trash2 size={16} />
                   </button>
-                  <span className="badge badge-yellow text-[11px]"><Zap size={10} /> SYNCED</span>
+                  {active.live !== false ? (
+                    <span className="badge badge-yellow text-[11px]"><Zap size={10} /> SYNCED</span>
+                  ) : (
+                    <span className="badge badge-neutral text-[11px]">NOT REGISTERED</span>
+                  )}
                 </div>
               </div>
+
+              {active.live === false && (
+                <p className="text-[10px] text-amber-300 -mt-3 mb-3">Observed from actual bot usage. Fill a Description above + Save to register the command + description on your Telegram bot.</p>
+              )}
 
               <div className="space-y-4">
                 <div>

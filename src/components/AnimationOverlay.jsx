@@ -470,9 +470,10 @@ function SnowOverlay({ speed, density }) {
 
     const initSnow = () => {
       flakes = [];
-      // Winter density: allow richer storm when slider maxed, but cap to keep buttery @60fps. Enhanced for more realistic winter storm look with the cold winter foggy mode.
-      const count = Math.floor((density / 100) * 260);
-      for (let i = 0; i < Math.min(count, 650); i++) {
+      // Winter density: realistic high count for dense beautiful falling snow. Cap keeps ultra smooth 60fps while looking like heavy winter snowfall even at 80-100%.
+      // More visible flakes + distance bias = ultra modern photo-realistic falling snow, always renders.
+      const count = Math.floor((density / 100) * 380);
+      for (let i = 0; i < Math.min(count, 780); i++) {
         flakes.push(new SnowFlake(true));
       }
     };
@@ -536,6 +537,9 @@ function SnowOverlay({ speed, density }) {
 
         {/* Fine frost/chill particulate haze overlay across entire view for final cold realism */}
         <div className="absolute inset-0 opacity-[0.022] mix-blend-screen bg-[repeating-radial-gradient(circle_at_center,rgba(250,252,255,0.9)_0,rgba(250,252,255,0.9)_0.6px,transparent_1.4px)]" />
+
+        {/* Ground snow bank subtle accumulation for more realistic winter floor look + extra thick low fog */}
+        <div className="absolute bottom-0 inset-x-0 h-[22vh] bg-gradient-to-t from-[rgba(255,255,255,0.08)] via-[rgba(232,242,255,0.045)] to-transparent mix-blend-overlay blur-2xl pointer-events-none" />
       </div>
     </>
   );

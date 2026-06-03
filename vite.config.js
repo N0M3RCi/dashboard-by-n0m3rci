@@ -4,6 +4,9 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  resolve: {
+    dedupe: ['react', 'react-dom', 'react-router-dom'],
+  },
   server: {
     port: 5173,
     host: true, // bind 0.0.0.0 for reliable access (fixes IPv6-only localhost issues)
