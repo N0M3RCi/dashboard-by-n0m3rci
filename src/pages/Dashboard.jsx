@@ -262,9 +262,9 @@ export default function Dashboard() {
               <span className="badge badge-yellow text-[11px] flex items-center gap-1"><Cpu size={12} /> SMART ROUTING READY</span>
             </div>
             <h2 className="text-xl font-bold text-text-primary truncate">
-              {d.botName || 'N0M3RCi'} <span className="text-text-muted text-sm font-normal">{d.botUsername}</span>
+              {d.botName || 'N0M3RCi'} <span className="text-text-muted text-sm font-normal">{}</span>
             </h2>
-            <p className="text-sm text-text-muted mt-1 line-clamp-2">{d.botDescription || 'Telegram AI Bot'}</p>
+            <p className="text-sm text-text-muted mt-1 line-clamp-2">{|| 'Telegram AI Bot'}</p>
         <a href={`https://t.me/${d.botUsername ? d.botUsername.replace('@','') : 'KwameJr_bot'}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 mt-3 text-xs text-primary hover:text-primary-dark font-medium transition-colors">
               <ExternalLink size={12} /> Open in Telegram
             </a>
