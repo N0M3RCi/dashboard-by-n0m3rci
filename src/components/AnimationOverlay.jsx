@@ -38,9 +38,9 @@ export default function AnimationOverlay() {
     return null;
   }
 
-  if (settings.type === 'snow' || settings.type === 'constellation') {
-    // snow was the deprecated cold winter thing. now ALWAYS a beautiful modern color constellation
-    // (for users who had 'snow' saved in localStorage we gracefully upgrade the visual)
+  if (settings.type === 'snow' || settings.type === 'constellation' || settings.type === 'particles') {
+    // particles was removed/deleted per request. old 'particles' settings auto-upgrade to snow/constellation
+    // (constellation is the current premier digital starfield; snow label maps to it for graceful compat)
     return <ConstellationOverlay speed={settings.speed} density={settings.density} colorTheme={settings.colorTheme} interactive={settings.interactive} />;
   }
 
@@ -48,181 +48,12 @@ export default function AnimationOverlay() {
     return <ConfettiOverlay speed={settings.speed} density={settings.density} colorTheme={settings.colorTheme} />;
   }
 
-  return <ParticlesOverlay speed={settings.speed} density={settings.density} colorTheme={settings.colorTheme} interactive={settings.interactive} />;
+  // Fallback for unknown/missing type
+  return <ConstellationOverlay speed={settings.speed} density={settings.density} colorTheme={settings.colorTheme} interactive={settings.interactive} />;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1. PARTICLES OVERLAY (Canvas-based high-performance connecting particles)
-// ─────────────────────────────────────────────────────────────────────────────
-function ParticlesOverlay({ speed, density, colorTheme, interactive }) {
-  const canvasRef = useRef(null);
-  const mouseRef = useRef({ x: null, y: null, radius: 180 });
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let animationFrameId;
-    let particles = [];
-
-    const resizeCanvas = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-      initParticles();
-    };
-
-    // Determine particle colors based on luxurious themes
-    const getColors = () => {
-      switch (colorTheme) {
-        case 'neon':
-          return ['#3b82f6', '#8b5cf6', '#ec4899']; // Premium vibrant blues/purples
-        case 'cold':
-          return ['#93c5fd', '#e0f2fe', '#ffffff']; // Cold winter whites/blues
-        case 'multi':
-          return ['#f5c518', '#3b82f6', '#10b981', '#ef4444']; // Multi-color elite array
-        case 'gold':
-        default:
-          return ['#f5c518', '#e0a904', '#fffbeb', '#ffd700']; // $3000 Golden Luxury theme
-      }
-    };
-
-    class Particle {
-      constructor(x, y) {
-        this.x = x;
-        this.y = y;
-        // Map 1-100 speed slider to reasonable velocities
-        const speedMultiplier = (speed / 100) * 1.5 + 0.2;
-        this.vx = (Math.random() - 0.5) * speedMultiplier;
-        this.vy = (Math.random() - 0.5) * speedMultiplier;
-        this.size = Math.random() * 2.5 + 1; // Elegant small dots (1px to 3.5px)
-        const colors = getColors();
-        this.color = colors[Math.floor(Math.random() * colors.length)];
-        this.opacity = Math.random() * 0.5 + 0.3;
-      }
-
-      draw() {
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        ctx.fillStyle = this.color;
-        ctx.globalAlpha = this.opacity;
-        ctx.fill();
-      }
-
-      update() {
-        this.x += this.vx;
-        this.y += this.vy;
-
-        // Bounce back from boundaries elegantly
-        if (this.x < 0 || this.x > canvas.width) this.vx = -this.vx;
-        if (this.y < 0 || this.y > canvas.height) this.vy = -this.vy;
-
-        // Push away from mouse (repulsion effect)
-        if (interactive && mouseRef.current.x !== null) {
-          const dx = this.x - mouseRef.current.x;
-          const dy = this.y - mouseRef.current.y;
-          const dist = Math.hypot(dx, dy);
-          if (dist < mouseRef.current.radius) {
-            const force = (mouseRef.current.radius - dist) / mouseRef.current.radius;
-            const angle = Math.atan2(dy, dx);
-            const pushX = Math.cos(angle) * force * 1.2;
-            const pushY = Math.sin(angle) * force * 1.2;
-            this.x += pushX;
-            this.y += pushY;
-          }
-        }
-      }
-    }
-
-    const initParticles = () => {
-      particles = [];
-      // Calculate particle count based on slider density & screen size
-      const area = (canvas.width * canvas.height) / 10000;
-      const count = Math.floor(area * (density / 100) * 1.2);
-      for (let i = 0; i < Math.min(count, 400); i++) {
-        particles.push(new Particle(Math.random() * canvas.width, Math.random() * canvas.height));
-      }
-    };
-
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-
-    // Track mouse move for interactive physics
-    const handleMouseMove = (e) => {
-      mouseRef.current.x = e.clientX;
-      mouseRef.current.y = e.clientY;
-    };
-
-    const handleMouseLeave = () => {
-      mouseRef.current.x = null;
-      mouseRef.current.y = null;
-    };
-
-    if (interactive) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseleave', handleMouseLeave);
-    }
-
-    // Main animation loop
-    const animate = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // 1. Update and Draw Particles
-      particles.forEach((p) => {
-        p.update();
-        p.draw();
-      });
-
-      // 2. Draw connections/webs
-      ctx.globalAlpha = 0.12;
-      const maxDistance = 110;
-
-      for (let i = 0; i < particles.length; i++) {
-        for (let j = i + 1; j < particles.length; j++) {
-          const pi = particles[i];
-          const pj = particles[j];
-          const dist = Math.hypot(pi.x - pj.x, pi.y - pj.y);
-
-          if (dist < maxDistance) {
-            // Fade connection alpha near max distance
-            const alpha = (1 - dist / maxDistance) * 0.15;
-            ctx.beginPath();
-            ctx.moveTo(pi.x, pi.y);
-            ctx.lineTo(pj.x, pj.y);
-            ctx.strokeStyle = pi.color; // Match connection line to first particle's color
-            ctx.lineWidth = 0.6;
-            ctx.globalAlpha = alpha;
-            ctx.stroke();
-          }
-        }
-      }
-
-      ctx.globalAlpha = 1.0;
-      animationFrameId = requestAnimationFrame(animate);
-    };
-
-    animate();
-
-    return () => {
-      cancelAnimationFrame(animationFrameId);
-      window.removeEventListener('resize', resizeCanvas);
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseleave', handleMouseLeave);
-    };
-  }, [speed, density, colorTheme, interactive]);
-
-  return (
-    <canvas
-      ref={canvasRef}
-      className="pointer-events-none fixed inset-0 z-[1] select-none opacity-80"
-      style={{ mixBlendMode: 'screen' }}
-    />
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 2. CONFETTI OVERLAY (Ultra-smooth drifting luxury confetti pieces)
+// 1. CONFETTI OVERLAY (Ultra-smooth drifting luxury confetti pieces)
 // ─────────────────────────────────────────────────────────────────────────────
 function ConfettiOverlay({ speed, density, colorTheme }) {
   const canvasRef = useRef(null);
@@ -345,9 +176,9 @@ function ConfettiOverlay({ speed, density, colorTheme }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. CONSTELLATION OVERLAY (replaces cold winter snow)
+// 2. CONSTELLATION OVERLAY (replaces cold winter snow)
 //    Modern digital/color constellation: glowing variable stars + vibrant line webs
-//    Exactly same API as ParticlesOverlay so speed/density/colors/interactive just work.
+//    Compatible API so speed/density/colors/interactive control the effect.
 //    Twinkling high-quality stars and color-matching elegant connections for a premium sigil look.
 // ─────────────────────────────────────────────────────────────────────────────
 function ConstellationOverlay({ speed, density, colorTheme, interactive }) {
@@ -534,69 +365,3 @@ function ConstellationOverlay({ speed, density, colorTheme, interactive }) {
 
 
 
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-
-    let globalGust = 0;
-    let gustTarget = 0;
-    let lastGustAt = 0;
-
-    const animate = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // Dynamic windy gusts for ultra realistic snow motion (0 normal, up to ~1.8 occasional blast)
-      const tNow = Date.now();
-      if (tNow - lastGustAt > 1800 + Math.random() * 2900) {
-        gustTarget = (Math.random() > 0.65) ? (0.7 + Math.random() * 1.15) : 0;
-        lastGustAt = tNow;
-      }
-      // Ease gust in/out
-      globalGust += (gustTarget - globalGust) * 0.032;
-
-      flakes.forEach((f) => {
-        f.update(globalGust);
-        f.draw();
-      });
-      animationFrameId = requestAnimationFrame(animate);
-    };
-
-    animate();
-
-    return () => {
-      cancelAnimationFrame(animationFrameId);
-      window.removeEventListener('resize', resizeCanvas);
-    };
-  }, [speed, density]);
-
-  return (
-    <>
-      {/* 1. Canvas Snowflakes Layer - 6-pointed tumbling crystalline winter flakes */}
-      <canvas
-        ref={canvasRef}
-        className="pointer-events-none fixed inset-0 z-[2] select-none"
-      />
-
-      {/* 2. Thick realistic cold winter fog + mist layers - heavy atmospheric "frosted" feel */}
-      <div className="pointer-events-none fixed inset-0 z-[1] select-none overflow-hidden">
-        {/* Very distant pale blue cold haze - sky simulation */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_48%_12%,rgba(186,215,255,0.045)_0%,transparent_68%)] mix-blend-screen" />
-
-        {/* Low heavy ground fog bank (thicker denser near floor) */}
-        <div className="absolute bottom-0 inset-x-0 h-[66vh] bg-gradient-to-t from-[rgba(232,242,255,0.075)] via-[rgba(255,255,255,0.032)] via-55% to-transparent pointer-events-none mix-blend-overlay blur-[42px] animate-fog-slow" />
-
-        {/* Mid height swirling slow valley mist */}
-        <div className="absolute inset-x-[6%] bottom-[9vh] h-[43vh] bg-gradient-to-br from-[rgba(255,255,255,0.022)] via-[rgba(232,242,255,0.040)] to-[rgba(255,255,255,0.015)] mix-blend-screen blur-3xl animate-fog-slow" style={{ animationDuration: '26s' }} />
-
-        {/* Large drifting cold banks full screen horizontal travel for immersive winter depth */}
-        <div className="absolute inset-0 opacity-[0.06] pointer-events-none mix-blend-screen bg-[radial-gradient(ellipse_at_42%_38%,rgba(214,233,255,0.45)_0%,transparent_72%)] animate-fog-drift" />
-        <div className="absolute inset-0 opacity-[0.038] pointer-events-none mix-blend-screen bg-[radial-gradient(ellipse_at_68%_59%,rgba(240,248,255,0.32)_0%,transparent_66%)] animate-fog-drift" style={{ animationDuration: '48s', transform: 'scale(1.1)' }} />
-
-        {/* Fine frost/chill particulate haze overlay across entire view for final cold realism */}
-        <div className="absolute inset-0 opacity-[0.022] mix-blend-screen bg-[repeating-radial-gradient(circle_at_center,rgba(250,252,255,0.9)_0,rgba(250,252,255,0.9)_0.6px,transparent_1.4px)]" />
-
-        {/* Ground snow bank subtle accumulation for more realistic winter floor look + extra thick low fog */}
-        <div className="absolute bottom-0 inset-x-0 h-[22vh] bg-gradient-to-t from-[rgba(255,255,255,0.08)] via-[rgba(232,242,255,0.045)] to-transparent mix-blend-overlay blur-2xl pointer-events-none" />
-      </div>
-    </>
-  );
-}

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 
 export default function CommandsPage() {
   const { data, loading, refresh, error } = useApi('/commands', 30000);
+  const { data: botMeta } = useApi('/bot-meta', 120000); // Include full TG API data for commands (every available field + audit)
   const [syncing, setSyncing] = useState(false);
   const [syncFlash, setSyncFlash] = useState(false);
   const [selected, setSelected] = useState(0);
@@ -140,6 +141,7 @@ export default function CommandsPage() {
           <span className="badge badge-green text-[11px]">{data?.total || 0} total</span>
           <span className="badge badge-yellow text-[11px]"><Zap size={10} /> {data?.live || 0} live</span>
           <span className="text-xs text-text-muted">Last sync: <strong className="text-primary">{data?.lastSync ? timeSince(data.lastSync) : 'Never'}</strong></span>
+          {botMeta?.commands && <span className="badge badge-neutral text-[10px]">TG API reports: {(botMeta.commands || []).length}</span>}
           {error && <span className="badge badge-red text-[10px] ml-2">Error: {error}</span>}
         </div>
         <div className="flex items-center gap-2">
@@ -307,6 +309,33 @@ export default function CommandsPage() {
                     onChange={(e) => setEditTemplate(e.target.value)}
                   />
                   <p className="text-[11px] text-text-muted mt-1.5">Use {'{{first_name}}'}, {'{{username}}'} for personalization.</p>
+                </div>
+
+                {/* Full raw data + every field from Telegram Bot API + dashboard enrichment */}
+                <div className="border-t border-border/50 pt-4 mt-1">
+                  <div className="text-[10px] uppercase tracking-widest text-text-muted font-semibold mb-2">From Telegram Bot API (every detail) + Dashboard Enrichment</div>
+                  <div className="bg-surface-900 border border-border/50 p-2 rounded text-[9px] font-mono space-y-0.5 overflow-auto max-h-40">
+                    <div>command: {active.command}</div>
+                    <div>description: {active.description || '(none)'}</div>
+                    <div>uses/triggers: {active.uses ?? 0}</div>
+                    <div>live (TG registered): {String(active.live !== false)}</div>
+                    <div>responseTemplate set (local): {(active.responseTemplate || '').slice(0,80)}{active.responseTemplate && active.responseTemplate.length > 80 ? '…' : ''}</div>
+                    <div>bare (no /): {active.command.replace(/^\//,'')}</div>
+                  </div>
+                  {/* Raw objects */}
+                  <div className="flex gap-2 mt-2">
+                    <div className="flex-1">
+                      <div className="text-[9px] text-text-muted mb-0.5">Full active object from /api/commands:</div>
+                      <pre className="bg-black/60 p-1 rounded text-[8px] overflow-auto max-h-24 whitespace-pre-wrap break-all">{JSON.stringify(active, null, 2)}</pre>
+                    </div>
+                    {botMeta?.commands && (
+                      <div className="flex-1">
+                        <div className="text-[9px] text-text-muted mb-0.5">Pure getMyCommands match from /bot-meta:</div>
+                        <pre className="bg-black/60 p-1 rounded text-[8px] overflow-auto max-h-24 whitespace-pre-wrap break-all">{JSON.stringify((botMeta.commands || []).find(c => ('/' + c.command) === active.command || c.command === active.command.replace(/^\//,'')) || 'not directly matched', null, 2)}</pre>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[9px] text-text-muted mt-1">Data pulled live via TG getMyCommands + accumulated server counts from bot message reports + any dashboard custom response templates. Saving description pushes via setMyCommands.</p>
                 </div>
               </div>
 

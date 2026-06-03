@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 
 export default function SettingsPage() {
   const { data, loading, refresh } = useApi('/settings', 30000);
-  const { data: botMeta } = useApi('/bot-meta', 60000); // Pulls the full TG Bot API exported metadata snapshot for inspector.
+  const { data: botMeta, loading: botMetaLoading, error: botMetaError } = useApi('/bot-meta', 60000); // Pulls the full TG Bot API exported metadata snapshot for inspector.
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [showToken, setShowToken] = useState(false);
@@ -243,37 +243,89 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* Top Tier: Live Telegram Bot API Inspector — on EVERY sync this section receives real data directly from TG (via /bot-meta) */}
-        {botMeta && (
-          <div className="mt-5 pt-4 border-t border-border/60">
-            <h4 className="text-xs uppercase tracking-wider font-semibold text-text-primary mb-2 flex items-center gap-2">
-              <Globe size={14} /> LIVE TELEGRAM BOT API SNAPSHOT <span className="font-mono text-[10px] text-primary">(all available data)</span>
-            </h4>
+        {/* Top Tier: Live Telegram Bot API Inspector — ALWAYS visible; on EVERY sync / test this pulls exhaustive data directly from Telegram via /bot-meta + getFullBotMeta */}
+        <div className="mt-5 pt-4 border-t border-border/60">
+          <h4 className="text-xs uppercase tracking-wider font-semibold text-text-primary mb-2 flex items-center gap-2">
+            <Globe size={14} /> LIVE TELEGRAM BOT API SNAPSHOT <span className="font-mono text-[10px] text-primary">(all reachable Bot API data)</span>
+            {botMetaLoading && <span className="text-[10px] text-primary animate-pulse ml-2">Loading…</span>}
+            {botMetaError && <span className="badge badge-red text-[9px] ml-2">ERR</span>}
+          </h4>
+
+          {botMetaLoading && !botMeta && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="card-dark p-3 h-16 animate-pulse bg-surface-800" />
+              ))}
+            </div>
+          )}
+
+          {botMetaError && (
+            <div className="text-xs p-3 bg-danger/10 border border-danger/20 rounded mb-2">
+              Snapshot fetch error: {botMetaError}. Configure token & hit "Save" or "Test connection" / sync to retry.
+            </div>
+          )}
+
+          {/* Show snapshot content if we have *any* response (even with per-field errors); render all fields we can */}
+          {(botMeta || !botMetaLoading) && !botMetaLoading && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div className="card-dark p-3">
-                <div className="font-semibold mb-1 text-text-secondary">Profile</div>
-                <div>@{botMeta.me?.username || '—'} · {botMeta.me?.first_name || '—'}</div>
-                <div className="text-[10px] text-text-muted">id: {botMeta.me?.id || '—'} · can_join_groups: {String(botMeta.me?.can_join_groups)}</div>
+                <div className="font-semibold mb-1 text-text-secondary">Profile (getMe)</div>
+                {botMeta?.meError ? (
+                  <div className="text-danger">Error: {botMeta.meError}</div>
+                ) : botMeta?.me ? (
+                  <>
+                    <div>@{botMeta.me?.username || '—'} · {botMeta.me?.first_name || '—'}</div>
+                    <div className="text-[10px] text-text-muted">id: {botMeta.me?.id || '—'} · can_join_groups: {String(botMeta.me?.can_join_groups)} · supports_inline: {String(botMeta.me?.supports_inline_queries)}</div>
+                    <div className="text-[10px] text-text-muted">is_bot: {String(botMeta.me?.is_bot)} · can_read_all_group_msgs: {String(botMeta.me?.can_read_all_group_messages)}</div>
+                  </>
+                ) : <div className="text-text-muted">—</div>}
               </div>
+
               <div className="card-dark p-3">
-                <div className="font-semibold mb-1 text-text-secondary">Descriptions (synced live)</div>
-                <div className="truncate"><span className="text-text-muted">Full:</span> {botMeta.description || '—'}</div>
-                <div className="truncate"><span className="text-text-muted">Short:</span> {botMeta.shortDescription || '—'}</div>
+                <div className="font-semibold mb-1 text-text-secondary">Descriptions (getMyDescription / getMyShortDescription)</div>
+                {botMeta?.descError ? <div className="text-[10px] text-danger">Full desc err: {botMeta.descError}</div> : (
+                  <div className="truncate"><span className="text-text-muted">Full:</span> {botMeta?.description || '—'}</div>
+                )}
+                {botMeta?.shortDescError ? <div className="text-[10px] text-danger">Short desc err: {botMeta.shortDescError}</div> : (
+                  <div className="truncate"><span className="text-text-muted">Short:</span> {botMeta?.shortDescription || '—'}</div>
+                )}
               </div>
+
               <div className="card-dark p-3">
-                <div className="font-semibold mb-1 text-text-secondary">Webhook</div>
-                <div>{(botMeta.webhook?.url) ? 'ACTIVE' : 'POLLING'} {botMeta.webhook?.url ? '• ' + botMeta.webhook.url : ''}</div>
-                <div className="text-[10px] text-text-muted">pending: {botMeta.webhook?.pending_update_count || 0} · last err: {botMeta.webhook?.last_error_message || 'none'}</div>
+                <div className="font-semibold mb-1 text-text-secondary">Webhook (getWebhookInfo)</div>
+                {botMeta?.webhookError ? (
+                  <div className="text-danger text-[10px]">Error: {botMeta.webhookError}</div>
+                ) : (
+                  <>
+                    <div>{(botMeta?.webhook?.url) ? 'ACTIVE' : 'POLLING (long-poll)'} {botMeta?.webhook?.url ? '• ' + botMeta.webhook.url : ''}</div>
+                    <div className="text-[10px] text-text-muted">pending updates: {botMeta?.webhook?.pending_update_count || 0} · last error: {botMeta?.webhook?.last_error_message || 'none'} {botMeta?.webhook?.last_error_date ? `(${new Date(botMeta.webhook.last_error_date*1000).toLocaleTimeString()})` : ''}</div>
+                    <div className="text-[10px] text-text-muted">max connections: {botMeta?.webhook?.max_connections || 'default'} · allowed_updates: {(botMeta?.webhook?.allowed_updates || []).join(',') || 'all'}</div>
+                  </>
+                )}
               </div>
+
               <div className="card-dark p-3">
-                <div className="font-semibold mb-1 text-text-secondary">Commands registered on TG</div>
-                <div>{(botMeta.commands || []).length} commands</div>
-                <div className="text-[10px] text-text-muted truncate">{(botMeta.commands || []).map(c => '/' + c.command).join(', ') || '—'}</div>
+                <div className="font-semibold mb-1 text-text-secondary">Commands (getMyCommands)</div>
+                {botMeta?.commandsError ? (
+                  <div className="text-danger text-[10px]">Error: {botMeta.commandsError}</div>
+                ) : (
+                  <>
+                    <div>{(botMeta?.commands || []).length} registered</div>
+                    <div className="text-[10px] text-text-muted truncate">{(botMeta?.commands || []).map(c => '/' + c.command + (c.description ? ` (${c.description})` : '')).join(', ') || '— (use /setMyCommands via BotFather or dashboard Commands tab)'}</div>
+                  </>
+                )}
+              </div>
+
+              {/* Extra full snapshot dump for "every little information" */}
+              <div className="col-span-1 sm:col-span-2 card-dark p-3 text-[10px] font-mono overflow-auto max-h-32">
+                <div className="text-text-secondary font-semibold mb-1 not-mono">RAW / FULL METADATA (from Telegram Bot API)</div>
+                <pre className="whitespace-pre-wrap break-all text-[9px]">{JSON.stringify({ me: botMeta?.me, description: botMeta?.description, shortDescription: botMeta?.shortDescription, webhook: botMeta?.webhook, commands: botMeta?.commands, lastSync: botMeta?.lastSync, latency: botMeta?.latency, errors: { me: botMeta?.meError, desc: botMeta?.descError, short: botMeta?.shortDescError, wh: botMeta?.webhookError, cmds: botMeta?.commandsError } }, null, 2)}</pre>
               </div>
             </div>
-            <p className="mt-1 text-[10px] text-text-muted">Data is always re-pulled live from the Telegram Bot API when you hit any Sync. No stale data.</p>
-          </div>
-        )}
+          )}
+
+          <p className="mt-1 text-[10px] text-text-muted">Full snapshot re-fetched live from Telegram on page load, save, test, or global sync. Includes profile, webhook details (for debug), descriptions, exact registered commands + raw for inspection.</p>
+        </div>
 
         {/* Danger zone: reset the collected data (analytics + users + logs). Useful if polluted by tests. */}
         <div className="pt-2 border-t border-border/60">

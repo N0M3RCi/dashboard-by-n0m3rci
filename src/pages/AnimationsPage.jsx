@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Sparkles, Sliders, Zap, Check, Activity, Palette } from 'lucide-react';
+import { Sparkles, Sliders, Check, Activity, Palette } from 'lucide-react';
 
 export default function AnimationsPage() {
   const [settings, setSettings] = useState(() => {
@@ -11,7 +11,7 @@ export default function AnimationsPage() {
       console.error(e);
     }
     return {
-      type: 'particles',
+      type: 'snow',
       speed: 50,
       density: 50,
       colorTheme: 'gold',
@@ -91,14 +91,6 @@ export default function AnimationsPage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-              <AnimationSelectorCard
-                id="particles"
-                title="Connecting Particles"
-                desc="High-performance interactive node networks that form a beautiful digital constellation web."
-                icon="🕸️"
-                active={settings.type === 'particles'}
-                onClick={() => updateSetting('type', 'particles')}
-              />
               <AnimationSelectorCard
                 id="snow"
                 title="Cold Winter Snow"
@@ -188,13 +180,13 @@ export default function AnimationsPage() {
                 </div>
               </div>
 
-              {/* Advanced Properties */}
-              <div className="border-t border-border pt-5 space-y-4">
-                <h4 className="text-xs font-semibold text-text-primary uppercase tracking-widest">Aesthetics & Behaviors</h4>
+              {/* Advanced Properties (color only for non-snow types like confetti) */}
+              {settings.type !== 'snow' && settings.type !== 'none' && (
+                <div className="border-t border-border pt-5 space-y-4">
+                  <h4 className="text-xs font-semibold text-text-primary uppercase tracking-widest">Aesthetics & Behaviors</h4>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Theme Selector */}
-                  {settings.type !== 'snow' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Theme Selector */}
                     <div>
                       <label className="text-[11px] text-text-muted font-semibold mb-1.5 block uppercase tracking-wider">Color Swatch</label>
                       <div className="grid grid-cols-4 gap-2">
@@ -228,34 +220,9 @@ export default function AnimationsPage() {
                         />
                       </div>
                     </div>
-                  )}
-
-                  {/* Interactivity Toggle */}
-                  {settings.type === 'particles' && (
-                    <div>
-                      <label className="text-[11px] text-text-muted font-semibold mb-1.5 block uppercase tracking-wider">Mouse Physics</label>
-                      <button
-                        onClick={() => updateSetting('interactive', !settings.interactive)}
-                        className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl border text-xs font-semibold transition-all ${
-                          settings.interactive
-                            ? 'bg-primary-glow border-primary text-primary'
-                            : 'bg-surface-700 border-border text-text-muted hover:border-border-light'
-                        }`}
-                      >
-                        <span className="flex items-center gap-2">
-                          <Zap size={14} className={settings.interactive ? 'animate-bounce' : ''} />
-                          Mouse Interaction (Repulse)
-                        </span>
-                        <div className={`w-4 h-4 rounded-full flex items-center justify-center border ${
-                          settings.interactive ? 'bg-primary border-primary text-black' : 'border-text-muted'
-                        }`}>
-                          {settings.interactive && <Check size={10} strokeWidth={3} />}
-                        </div>
-                      </button>
-                    </div>
-                  )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
         </div>
