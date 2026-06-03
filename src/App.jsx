@@ -11,6 +11,7 @@ import AboutPage from './pages/AboutPage';
 import AnimationsPage from './pages/AnimationsPage';
 import ResetPage from './pages/ResetPage';
 import AnimationOverlay from './components/AnimationOverlay';
+import ScrollHand from './components/ScrollHand';
 import { Menu, X } from 'lucide-react';
 
 function ProtectedRoute({ children }) {
@@ -51,6 +52,9 @@ function Layout({ children }) {
           {children}
         </div>
       </main>
+
+      {/* Small hand scrollbar replacement tool: far right of viewport. Mouse-cursor sized. Gesture animations + drag/click to scroll the page. */}
+      <ScrollHand />
     </div>
   );
 }
