@@ -1,0 +1,41 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+.env
+.env.local
+.env.*.local
+# Persisted runtime settings (token etc) — never commit secrets
+server/settings.json
+server/storage/
+storage/
+dashboard-settings.json
+*.settings.json
+/app/storage/*.json
+/app/storage/settings.json
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+
+# Agent / Bud runtime (local only, never ship)
+.bud/
+.bud/*
+*.bud
+storage/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
