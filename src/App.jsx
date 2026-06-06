@@ -47,7 +47,7 @@ function Layout({ children }) {
       {/* Sidebar stretches the full viewport footer precisely (lg static, mobile drawer) to align exactly bottom with the main metric content area */}
       <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
 
-      <main className="flex-1 lg:ml-56 pt-14 lg:pt-0 p-5 lg:p-6 overflow-y-auto overflow-x-hidden h-full">
+      <main className="flex-1 pt-14 lg:pt-0 p-5 lg:p-6 overflow-y-auto overflow-x-hidden h-full">
         <div className="max-w-[1100px] mx-auto pb-12">
           {children}
         </div>

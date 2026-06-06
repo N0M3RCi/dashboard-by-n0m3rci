@@ -1200,7 +1200,20 @@ app.get('/api/analytics', authMiddleware, (req, res) => {
 
 // ─── Website Analytics: Tracking Endpoint ───────────────────────────
 // Accept tracking data from the websites (POST from embedded tracking script)
-app.post('/api/webtrack', (req, res) => {
+app.post('/api/webtrack', (req, res, next) => {
+  // Handle text/plain bodies (sendBeacon fallback without Blob, curl tests, etc.)
+  let ct = (req.headers['content-type'] || '').toLowerCase();
+  if (!ct.includes('application/json') && typeof req.body === 'undefined') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      try { req.body = JSON.parse(body); } catch { req.body = {}; }
+      next();
+    });
+  } else {
+    next();
+  }
+}, (req, res) => {
   const { site, page, referrer, timeSpent, screenWidth, screenHeight } = req.body || {};
 
   // Require at minimum a site and page identifier
@@ -1569,6 +1582,18 @@ app.get('/api/webtrack/tracker.js', (req, res) => {
   var site = window.location.hostname;
   var startTime = Date.now();
   var sent = false;
+  function send(data) {
+    var body = JSON.stringify(data);
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(api, new Blob([body], { type: 'application/json' }));
+    } else {
+      var x = new XMLHttpRequest();
+      x.open('POST', api, true);
+      x.setRequestHeader('Content-Type', 'application/json');
+      x.send(body);
+    }
+    sent = true;
+  }
   function track(action, extra) {
     if (sent && action !== 'leave') return;
     var data = {
@@ -1579,19 +1604,16 @@ app.get('/api/webtrack/tracker.js', (req, res) => {
       screenHeight: window.screen ? window.screen.height : 0,
       timeSpent: Math.round((Date.now() - startTime) / 1000),
       action: action,
-      ...(extra || {})
     };
-    if (navigator.sendBeacon) {
-      navigator.sendBeacon(api, JSON.stringify(data));
-    } else {
-      var x = new XMLHttpRequest();
-      x.open('POST', api, true);
-      x.setRequestHeader('Content-Type', 'application/json');
-      x.send(JSON.stringify(data));
-    }
-    sent = true;
+    if (extra) { for (var k in extra) { data[k] = extra[k]; } }
+    send(data);
   }
   track('visit');
+  if (document.visibilityState === 'visible') {
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'hidden') track('leave');
+    });
+  }
   window.addEventListener('beforeunload', function() { track('leave'); });
 })();`;
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
