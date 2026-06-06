@@ -4,10 +4,10 @@ import { MessageSquare, Users, Terminal, UserPlus, RefreshCw, ExternalLink, Arro
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 export default function Dashboard() {
-  const { data, loading, refresh } = useApi('/overview', 30000);
+  const { data, loading, refresh } = useApi('/overview', 2000);
   const [syncing, setSyncing] = useState(false);
   const [syncFlash, setSyncFlash] = useState(false);
-  const [nextSync, setNextSync] = useState(60);
+  const [nextSync, setNextSync] = useState(2);
 
   // Live state overrides to support sub-second real-time streaming counters
   const [liveMessages, setLiveMessages] = useState(0);
@@ -162,13 +162,13 @@ export default function Dashboard() {
     setSyncing(false);
     setSyncFlash(true);
     setTimeout(() => setSyncFlash(false), 1400);
-    setNextSync(60);
+    setNextSync(2);
     refresh();
   };
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setNextSync(prev => (prev <= 0 ? 60 : prev - 1));
+      setNextSync(prev => (prev <= 0 ? 2 : prev - 1));
     }, 1000);
     return () => clearInterval(interval);
   }, []);
@@ -180,7 +180,7 @@ export default function Dashboard() {
   }, [nextSync]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const formatTime = (s) => `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`; // last auto-sync effect calls set in caller
+  const formatTime = (s) => `${s}s`;
 
 
   if (loading && !data) {
