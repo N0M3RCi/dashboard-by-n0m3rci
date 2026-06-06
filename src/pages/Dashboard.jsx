@@ -4,10 +4,10 @@ import { MessageSquare, Users, Terminal, UserPlus, RefreshCw, ExternalLink, Arro
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 export default function Dashboard() {
-  const { data, loading, refresh } = useApi('/overview', 2000);
+  const { data, loading, refresh } = useApi('/overview', 10000);
   const [syncing, setSyncing] = useState(false);
   const [syncFlash, setSyncFlash] = useState(false);
-  const [nextSync, setNextSync] = useState(2);
+  const [nextSync, setNextSync] = useState(10);
 
   // Live state overrides to support sub-second real-time streaming counters
   const [liveMessages, setLiveMessages] = useState(0);
@@ -162,13 +162,13 @@ export default function Dashboard() {
     setSyncing(false);
     setSyncFlash(true);
     setTimeout(() => setSyncFlash(false), 1400);
-    setNextSync(2);
+    setNextSync(10);
     refresh();
   };
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setNextSync(prev => (prev <= 0 ? 2 : prev - 1));
+      setNextSync(prev => (prev <= 0 ? 10 : prev - 1));
     }, 1000);
     return () => clearInterval(interval);
   }, []);
