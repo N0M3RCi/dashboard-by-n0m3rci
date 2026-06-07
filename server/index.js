@@ -1583,10 +1583,11 @@ app.get('/api/webtrack/tracker.js', (req, res) => {
   var startTime = Date.now();
   var sent = false;
   function send(data) {
+    if (sent) return;
     var body = JSON.stringify(data);
-    if (navigator.sendBeacon) {
-      navigator.sendBeacon(api, new Blob([body], { type: 'application/json' }));
-    } else {
+    try {
+      fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body, keepalive: true });
+    } catch(e) {
       var x = new XMLHttpRequest();
       x.open('POST', api, true);
       x.setRequestHeader('Content-Type', 'application/json');
@@ -1595,7 +1596,7 @@ app.get('/api/webtrack/tracker.js', (req, res) => {
     sent = true;
   }
   function track(action, extra) {
-    if (sent && action !== 'leave') return;
+    if (sent) return;
     var data = {
       site: site,
       page: window.location.pathname + window.location.search,
@@ -1603,7 +1604,6 @@ app.get('/api/webtrack/tracker.js', (req, res) => {
       screenWidth: window.screen ? window.screen.width : 0,
       screenHeight: window.screen ? window.screen.height : 0,
       timeSpent: Math.round((Date.now() - startTime) / 1000),
-      action: action,
     };
     if (extra) { for (var k in extra) { data[k] = extra[k]; } }
     send(data);
@@ -1614,7 +1614,6 @@ app.get('/api/webtrack/tracker.js', (req, res) => {
       if (document.visibilityState === 'hidden') track('leave');
     });
   }
-  window.addEventListener('beforeunload', function() { track('leave'); });
 })();`;
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=3600');
