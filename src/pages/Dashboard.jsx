@@ -21,6 +21,24 @@ export default function Dashboard() {
   // Real-time Event Stream / Terminal log state
   const [liveLogs, setLiveLogs] = useState([]);
   const terminalEndRef = useRef(null);
+  const terminalContainerRef = useRef(null);
+  const isUserScrolledUp = useRef(false);
+  const lastPollLogTime = useRef(0);
+  const lastSyncLogTime = useRef(0);
+  const POLL_LOG_INTERVAL = 30 * 60 * 1000; // 30 minutes
+  const SYNC_LOG_INTERVAL = 30 * 60 * 1000; // 30 minutes
+
+  // Called by the "Refresh Now" button to force log POLL/SYNC immediately
+  const forceLogRefresh = useRef(null);
+
+  // Track if user has manually scrolled up
+  const handleTerminalScroll = () => {
+    if (!terminalContainerRef.current) return;
+    const el = terminalContainerRef.current;
+    const threshold = 40; // px from bottom
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+    isUserScrolledUp.current = !atBottom;
+  };
 
   // Ingest health state for diagnosing "no data in dashboard"
   const [isLiveConnected, setIsLiveConnected] = useState(false);
@@ -44,13 +62,18 @@ export default function Dashboard() {
       if (data.lastEventReceived) setLastIngestTs(data.lastEventReceived);
       if (typeof data.reportsReceived === 'number') setIngestReports(data.reportsReceived);
 
-      // Log overview poll activity to the debug terminal
-      const ts = new Date().toLocaleTimeString();
-      const subs = data.subscribers || 0;
-      const msgs = data.messages30d || 0;
-      const cmds = data.commandsFired || 0;
-      const reports = data.reportsReceived || 0;
-      setLiveLogs(prev => [...prev.slice(-30), `[${ts}] [POLL] Overview — msgs:${msgs} subs:${subs} cmds:${cmds} reports:${reports} latency:${data.latency || 0}ms`]);
+      // Log overview poll to debug terminal (throttled to every 30 min)
+      const now = Date.now();
+      if (forceLogRefresh.current || now - lastPollLogTime.current >= POLL_LOG_INTERVAL) {
+        lastPollLogTime.current = now;
+        forceLogRefresh.current = false; // reset after both SYNC & POLL have consumed it
+        const ts = new Date().toLocaleTimeString();
+        const subs = data.subscribers || 0;
+        const msgs = data.messages30d || 0;
+        const cmds = data.commandsFired || 0;
+        const reports = data.reportsReceived || 0;
+        setLiveLogs(prev => [...prev.slice(-30), `[${ts}] [POLL] Overview — msgs:${msgs} subs:${subs} cmds:${cmds} reports:${reports} latency:${data.latency || 0}ms`]);
+      }
     }
   }, [data]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -157,21 +180,30 @@ export default function Dashboard() {
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  // Scroll terminal logs to bottom when updated
+  // Scroll terminal logs to bottom — only if user hasn't scrolled up
   useEffect(() => {
-    if (terminalEndRef.current) {
+    if (!isUserScrolledUp.current && terminalEndRef.current) {
       terminalEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [liveLogs]);
 
   const handleSync = async () => {
     setSyncing(true);
-    const ts = new Date().toLocaleTimeString();
-    setLiveLogs(prev => [...prev.slice(-30), `[${ts}] [SYNC] Starting Telegram API pull...`]);
+    const now = Date.now();
+    const shouldLogSync = forceLogRefresh.current || now - lastSyncLogTime.current >= SYNC_LOG_INTERVAL;
+    if (shouldLogSync) lastSyncLogTime.current = now;
+    if (shouldLogSync) {
+      const ts = new Date().toLocaleTimeString();
+      setLiveLogs(prev => [...prev.slice(-30), `[${ts}] [SYNC] Starting Telegram API pull...`]);
+    }
     try {
       const result = await apiPost('/sync');
-      setLiveLogs(prev => [...prev.slice(-30), `[${ts}] [SYNC] Done — ${result.newMessages || 0} new msgs, ${result.newUsers || 0} new users (${result.elapsed || 0}ms)`]);
+      if (shouldLogSync) {
+        const ts = new Date().toLocaleTimeString();
+        setLiveLogs(prev => [...prev.slice(-30), `[${ts}] [SYNC] Done — ${result.newMessages || 0} new msgs, ${result.newUsers || 0} new users (${result.elapsed || 0}ms)`]);
+      }
     } catch (e) {
+      const ts = new Date().toLocaleTimeString();
       setLiveLogs(prev => [...prev.slice(-30), `[${ts}] [SYNC] Failed — ${e.message || 'unknown error'}`]);
     }
     setSyncing(false);
@@ -322,13 +354,29 @@ export default function Dashboard() {
               {isLiveConnected ? 'LIVE' : 'OFFLINE'}
             </span>
           </div>
-          {liveLogs.length > 0 && (
-            <button onClick={() => setLiveLogs([])} className="text-[10px] text-text-muted hover:text-text-primary transition-colors px-2 py-1 rounded-lg hover:bg-surface-700">
-              Clear
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => {
+                forceLogRefresh.current = true;
+                // Trigger a POLL log immediately (the data effect will pick up forceLogRefresh)
+                refresh();
+                // Also manually add a SYNC log entry right now
+                const ts = new Date().toLocaleTimeString();
+                lastSyncLogTime.current = 0; // Allow next sync to log regardless of timer
+                setLiveLogs(prev => [...prev.slice(-30), `[${ts}] [SYNC] Refreshing now...`]);
+              }}
+              className="text-[10px] text-primary hover:text-primary-dark transition-colors px-2 py-1 rounded-lg hover:bg-primary/10 font-medium flex items-center gap-1"
+            >
+              <RefreshCw size={11} /> Refresh Now
             </button>
-          )}
+            {liveLogs.length > 0 && (
+              <button onClick={() => setLiveLogs([])} className="text-[10px] text-text-muted hover:text-text-primary transition-colors px-2 py-1 rounded-lg hover:bg-surface-700">
+                Clear
+              </button>
+            )}
+          </div>
         </div>
-        <div className="bg-black/50 border border-border/60 rounded-xl p-3 h-48 overflow-y-auto font-mono text-[11px] leading-relaxed">
+        <div ref={terminalContainerRef} onScroll={handleTerminalScroll} className="bg-black/50 border border-border/60 rounded-xl p-3 h-48 overflow-y-auto font-mono text-[11px] leading-relaxed">
           {liveLogs.length === 0 ? (
             <p className="text-text-muted/60 italic">Waiting for events from the bot — send a message to your Telegram bot to see activity here...</p>
           ) : (
