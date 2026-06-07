@@ -10,6 +10,7 @@ import SettingsPage from './pages/SettingsPage';
 import AboutPage from './pages/AboutPage';
 import AnimationsPage from './pages/AnimationsPage';
 import ResetPage from './pages/ResetPage';
+import SystemLogPage from './pages/SystemLogPage';
 import AnimationOverlay from './components/AnimationOverlay';
 import { Menu, X } from 'lucide-react';
 
@@ -69,6 +70,7 @@ export default function App() {
         <Route path="/settings" element={<ProtectedRoute><Layout><SettingsPage /></Layout></ProtectedRoute>} />
         <Route path="/reset" element={<ProtectedRoute><Layout><ResetPage /></Layout></ProtectedRoute>} />
         <Route path="/about" element={<ProtectedRoute><Layout><AboutPage /></Layout></ProtectedRoute>} />
+        <Route path="/system-log" element={<ProtectedRoute><Layout><SystemLogPage /></Layout></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>

@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, Terminal, BarChart3, Sparkles, Settings, Info, LogOut, RotateCcw } from 'lucide-react';
+import { LayoutDashboard, Users, Terminal, BarChart3, Sparkles, Settings, Info, LogOut, RotateCcw, Bug } from 'lucide-react';
 import { useApi } from '../hooks/useApi';
 
 const navItems = [
@@ -11,6 +11,7 @@ const navItems = [
   { to: '/settings', icon: Settings, label: 'Settings' },
   { to: '/reset', icon: RotateCcw, label: 'Reset' },
   { to: '/about', icon: Info, label: 'About' },
+  { to: '/system-log', icon: Bug, label: 'System Log' },
 ];
 
 export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {

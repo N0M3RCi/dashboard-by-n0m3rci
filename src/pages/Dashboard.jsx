@@ -4,10 +4,10 @@ import { MessageSquare, Users, Terminal, UserPlus, RefreshCw, ExternalLink, Arro
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 export default function Dashboard() {
-  const { data, loading, refresh } = useApi('/overview', 10000);
+  const { data, loading, refresh } = useApi('/overview', 2000);
   const [syncing, setSyncing] = useState(false);
   const [syncFlash, setSyncFlash] = useState(false);
-  const [nextSync, setNextSync] = useState(10);
+  const [nextSync, setNextSync] = useState(5);
 
   // Live state overrides to support sub-second real-time streaming counters
   const [liveMessages, setLiveMessages] = useState(0);
@@ -43,6 +43,14 @@ export default function Dashboard() {
       }
       if (data.lastEventReceived) setLastIngestTs(data.lastEventReceived);
       if (typeof data.reportsReceived === 'number') setIngestReports(data.reportsReceived);
+
+      // Log overview poll activity to the debug terminal
+      const ts = new Date().toLocaleTimeString();
+      const subs = data.subscribers || 0;
+      const msgs = data.messages30d || 0;
+      const cmds = data.commandsFired || 0;
+      const reports = data.reportsReceived || 0;
+      setLiveLogs(prev => [...prev.slice(-30), `[${ts}] [POLL] Overview — msgs:${msgs} subs:${subs} cmds:${cmds} reports:${reports} latency:${data.latency || 0}ms`]);
     }
   }, [data]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -158,17 +166,24 @@ export default function Dashboard() {
 
   const handleSync = async () => {
     setSyncing(true);
-    await apiPost('/sync');
+    const ts = new Date().toLocaleTimeString();
+    setLiveLogs(prev => [...prev.slice(-30), `[${ts}] [SYNC] Starting Telegram API pull...`]);
+    try {
+      const result = await apiPost('/sync');
+      setLiveLogs(prev => [...prev.slice(-30), `[${ts}] [SYNC] Done — ${result.newMessages || 0} new msgs, ${result.newUsers || 0} new users (${result.elapsed || 0}ms)`]);
+    } catch (e) {
+      setLiveLogs(prev => [...prev.slice(-30), `[${ts}] [SYNC] Failed — ${e.message || 'unknown error'}`]);
+    }
     setSyncing(false);
     setSyncFlash(true);
     setTimeout(() => setSyncFlash(false), 1400);
-    setNextSync(10);
+    setNextSync(5);
     refresh();
   };
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setNextSync(prev => (prev <= 0 ? 10 : prev - 1));
+      setNextSync(prev => (prev <= 0 ? 5 : prev - 1));
     }, 1000);
     return () => clearInterval(interval);
   }, []);

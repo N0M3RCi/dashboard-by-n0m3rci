@@ -1313,6 +1313,49 @@ app.post('/api/test-connection', authMiddleware, async (req, res) => {
   }
 });
 
+// ─── Centralized Error Tracking ──────────────────────────────
+// In-memory ring buffer for server & client errors
+const MAX_ERROR_LOG = 200;
+let errorLog = [];
+
+function logError(source, message, details = {}) {
+  const entry = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    timestamp: Date.now(),
+    source: source,       // 'server' | 'client' | 'telegram' | 'sync' | 'sse'
+    message: message,
+    details: details,
+  };
+  errorLog.push(entry);
+  if (errorLog.length > MAX_ERROR_LOG) {
+    errorLog = errorLog.slice(-MAX_ERROR_LOG);
+  }
+  // Also echo to console
+  console.error(`[ERROR][${source}] ${message}`, details.error || '');
+  return entry;
+}
+
+// GET /api/errors — retrieve error history
+app.get('/api/errors', authMiddleware, (req, res) => {
+  const { source, since, limit } = req.query;
+  let filtered = errorLog;
+  if (source) filtered = filtered.filter(e => e.source === source);
+  if (since) filtered = filtered.filter(e => e.timestamp > parseInt(since));
+  if (limit) filtered = filtered.slice(-parseInt(limit));
+  // Return newest first
+  res.json({ total: filtered.length, errors: [...filtered].reverse() });
+});
+
+// POST /api/errors — accept client-side error reports
+app.post('/api/errors', authMiddleware, (req, res) => {
+  const { message, source, url, details } = req.body || {};
+  if (!message) return res.status(400).json({ error: 'message required' });
+  logError(source || 'client', message, { url, ...(details || {}) });
+  // Broadcast to SSE clients for real-time visibility
+  try { broadcastEvent('error', { message, source: source || 'client', timestamp: Date.now() }); } catch { /* ignore */ }
+  res.json({ success: true });
+});
+
 // ─── Serve Static Files (Production) ───────────────────────
 
 // In production, serve the built Vite static files from the 'dist' directory
