@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, Terminal, BarChart3, Sparkles, Settings, Info, LogOut, RotateCcw, Globe } from 'lucide-react';
+import { LayoutDashboard, Users, Terminal, BarChart3, Sparkles, Settings, Info, LogOut, RotateCcw } from 'lucide-react';
 import { useApi } from '../hooks/useApi';
 
 const navItems = [
@@ -7,7 +7,6 @@ const navItems = [
   { to: '/users', icon: Users, label: 'Users' },
   { to: '/commands', icon: Terminal, label: 'Commands' },
   { to: '/analytics', icon: BarChart3, label: 'Analytics' },
-  { to: '/websites', icon: Globe, label: 'Websites' },
   { to: '/animations', icon: Sparkles, label: 'FX Animations' },
   { to: '/settings', icon: Settings, label: 'Settings' },
   { to: '/reset', icon: RotateCcw, label: 'Reset' },

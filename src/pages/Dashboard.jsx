@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useApi, apiPost } from '../hooks/useApi';
-import { MessageSquare, Users, Terminal, UserPlus, RefreshCw, ExternalLink, ArrowUpRight, Cpu, Sparkles } from 'lucide-react';
+import { MessageSquare, Users, Terminal, UserPlus, RefreshCw, ExternalLink, ArrowUpRight, Cpu, Sparkles, ScrollText } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 export default function Dashboard() {
@@ -294,6 +294,37 @@ export default function Dashboard() {
         <span>Reports: <span className="text-text-primary font-semibold">{ingestReports || d.reportsReceived || 0}</span> total</span>
         <span>Last event: <span className="text-text-primary font-semibold">{lastIngestTs || d.lastEventReceived ? new Date(lastIngestTs || d.lastEventReceived).toLocaleTimeString() : 'never (send bot msg)'}</span></span>
         <span className="text-[10px] text-text-muted/60"></span>
+      </div>
+
+      {/* Debug Log Terminal — real-time SSE event stream */}
+      <div className="card p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <ScrollText size={16} className="text-primary" />
+            <h3 className="text-sm font-semibold text-text-primary">Debug Log</h3>
+            <span className={`badge text-[10px] flex items-center gap-1 px-2 py-0.5 font-bold ${isLiveConnected ? 'badge-green' : 'badge-red'}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${isLiveConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'} inline-block`} />
+              {isLiveConnected ? 'LIVE' : 'OFFLINE'}
+            </span>
+          </div>
+          {liveLogs.length > 0 && (
+            <button onClick={() => setLiveLogs([])} className="text-[10px] text-text-muted hover:text-text-primary transition-colors px-2 py-1 rounded-lg hover:bg-surface-700">
+              Clear
+            </button>
+          )}
+        </div>
+        <div className="bg-black/50 border border-border/60 rounded-xl p-3 h-48 overflow-y-auto font-mono text-[11px] leading-relaxed">
+          {liveLogs.length === 0 ? (
+            <p className="text-text-muted/60 italic">Waiting for events from the bot — send a message to your Telegram bot to see activity here...</p>
+          ) : (
+            liveLogs.map((log, i) => (
+              <div key={i} className="text-green-400/90 border-b border-border/10 py-0.5 last:border-0">
+                {log}
+              </div>
+            ))
+          )}
+          <div ref={terminalEndRef} />
+        </div>
       </div>
 
       {/* Professional Setup Guidance — shows only if zero activity yet. This is THE cure for the reported "no data" state */}

@@ -16,31 +16,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ─── User-Agent parsing helpers for website tracking ────────────────────
-function parseUA(ua) {
-  const result = { browser: 'Unknown', os: 'Unknown', device: 'Desktop' };
-  if (!ua) return result;
-  const lower = ua.toLowerCase();
-  // Detect mobile/tablet
-  if (/mobile|android.*mobile|iphone|ipod/i.test(ua)) result.device = 'Mobile';
-  else if (/tablet|ipad|playbook|silk/i.test(ua)) result.device = 'Tablet';
-  // Detect OS
-  if (/windows/i.test(ua)) result.os = 'Windows';
-  else if (/mac os|macintosh/i.test(ua)) result.os = 'macOS';
-  else if (/android/i.test(ua)) result.os = 'Android';
-  else if (/linux/i.test(ua)) result.os = 'Linux';
-  else if (/iphone|ipad|ipod/i.test(ua)) result.os = 'iOS';
-  else if (/cros/i.test(ua)) result.os = 'ChromeOS';
-  // Detect browser
-  if (/edge|edg\//i.test(ua)) result.browser = 'Edge';
-  else if (/opr|opera/i.test(ua)) result.browser = 'Opera';
-  else if (/chrome/i.test(ua) && !/edg\//i.test(ua)) result.browser = 'Chrome';
-  else if (/safari/i.test(ua) && !/chrome/i.test(ua)) result.browser = 'Safari';
-  else if (/firefox/i.test(ua)) result.browser = 'Firefox';
-  else if (/trident|msie/i.test(ua)) result.browser = 'IE';
-  return result;
-}
-
 // Persistent settings + analytics files — HARD REQUIREMENT for data not disappearing.
 // On Railway: attach a Volume in the service dashboard (Data > Volumes). Railway will
 // set RAILWAY_VOLUME_MOUNT_PATH automatically (commonly /app/storage but can be chosen).
@@ -86,7 +61,6 @@ try {
 
 const SETTINGS_FILE = path.join(PERSIST_DIR, 'settings.json');
 const ANALYTICS_FILE = path.join(PERSIST_DIR, 'analytics.json');
-const WEBSITES_FILE = path.join(PERSIST_DIR, 'websites.json');
 
 // Guarantee dir exists (idempotent)
 try {
@@ -168,47 +142,6 @@ function saveAnalyticsState() {
     console.warn('Could not persist analytics state:', e.message);
   }
 }
-
-// ─── Website analytics persistence ───────────────────────────────────
-function loadWebsiteState() {
-  try {
-    if (fs.existsSync(WEBSITES_FILE)) {
-      const saved = JSON.parse(fs.readFileSync(WEBSITES_FILE, 'utf-8'));
-      return {
-        visits: Array.isArray(saved.visits) ? saved.visits : [],
-        sites: saved.sites || {},
-        totalVisits: typeof saved.totalVisits === 'number' ? saved.totalVisits : 0,
-      };
-    }
-  } catch (e) {
-    console.warn('Could not load website analytics:', e.message);
-  }
-  return { visits: [], sites: {}, totalVisits: 0 };
-}
-
-const savedWebsiteState = loadWebsiteState();
-
-// Website analytics data (also persisted)
-let websiteVisits = savedWebsiteState.visits || [];
-let websiteSites = savedWebsiteState.sites || {};
-const MAX_WEBSITE_VISITS = 50000;
-
-function saveWebsiteState() {
-  try {
-    if (websiteVisits.length > MAX_WEBSITE_VISITS) {
-      websiteVisits = websiteVisits.slice(-MAX_WEBSITE_VISITS);
-    }
-    fs.writeFileSync(WEBSITES_FILE, JSON.stringify({
-      visits: websiteVisits,
-      sites: websiteSites,
-      totalVisits: Object.values(websiteSites).reduce((sum, s) => sum + (s.visits || 0), 0),
-    }, null, 2), 'utf-8');
-  } catch (e) {
-    console.warn('Could not persist website analytics:', e.message);
-  }
-}
-
-console.log(`📊 Website analytics restored: ${websiteVisits.length} visits tracked`);
 
 const savedAnalytics = loadAnalyticsState();
 
@@ -1198,199 +1131,6 @@ app.get('/api/analytics', authMiddleware, (req, res) => {
   });
 });
 
-// ─── Website Analytics: Tracking Endpoint ───────────────────────────
-// Accept tracking data from the websites (POST from embedded tracking script)
-app.post('/api/webtrack', (req, res, next) => {
-  // Handle text/plain bodies (sendBeacon fallback without Blob, curl tests, etc.)
-  let ct = (req.headers['content-type'] || '').toLowerCase();
-  if (!ct.includes('application/json') && typeof req.body === 'undefined') {
-    let body = '';
-    req.on('data', c => body += c);
-    req.on('end', () => {
-      try { req.body = JSON.parse(body); } catch { req.body = {}; }
-      next();
-    });
-  } else {
-    next();
-  }
-}, (req, res) => {
-  const { site, page, referrer, timeSpent, screenWidth, screenHeight } = req.body || {};
-
-  // Require at minimum a site and page identifier
-  if (!site || !page) {
-    return res.status(400).json({ error: 'site and page are required' });
-  }
-
-  const timestamp = Date.now();
-  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
-    || req.headers['x-real-ip']
-    || req.ip
-    || req.socket.remoteAddress
-    || 'unknown';
-
-  const ua = req.headers['user-agent'] || '';
-  const parsed = parseUA(ua);
-
-  const visit = {
-    site,
-    page,
-    referrer: referrer || '',
-    ip,
-    ua,
-    device: parsed.device,
-    browser: parsed.browser,
-    os: parsed.os,
-    timeSpent: Math.min(typeof timeSpent === 'number' ? timeSpent : 0, 3600), // cap at 1 hour
-    screenWidth: screenWidth || 0,
-    screenHeight: screenHeight || 0,
-    timestamp,
-  };
-
-  // Add to raw visit log
-  websiteVisits.push(visit);
-
-  // Initialize site stats if new
-  if (!websiteSites[site]) {
-    websiteSites[site] = {
-      visits: 0,
-      uniqueIPs: {},
-      pages: {},
-      devices: {},
-      browsers: {},
-      os: {},
-      totalTimeSpent: 0,
-      firstSeen: timestamp,
-      lastSeen: timestamp,
-    };
-  }
-
-  const s = websiteSites[site];
-  s.visits = (s.visits || 0) + 1;
-  s.lastSeen = timestamp;
-  s.totalTimeSpent = (s.totalTimeSpent || 0) + (visit.timeSpent || 0);
-
-  // Track unique IPs
-  if (!s.uniqueIPs[ip]) s.uniqueIPs[ip] = 0;
-  s.uniqueIPs[ip]++;
-
-  // Track pages
-  if (!s.pages[page]) s.pages[page] = 0;
-  s.pages[page]++;
-
-  // Track device/browser/OS
-  s.devices[parsed.device] = (s.devices[parsed.device] || 0) + 1;
-  s.browsers[parsed.browser] = (s.browsers[parsed.browser] || 0) + 1;
-  s.os[parsed.os] = (s.os[parsed.os] || 0) + 1;
-
-  // Persist periodically (every 10 visits per site to reduce writes)
-  if (s.visits % 10 === 0) {
-    saveWebsiteState();
-  }
-
-  res.json({ success: true });
-});
-
-// Return aggregated website analytics data
-app.get('/api/webtrack-data', authMiddleware, (req, res) => {
-  const now = Date.now();
-  const d24h = now - 24 * 60 * 60 * 1000;
-  const d7d = now - 7 * 24 * 60 * 60 * 1000;
-  const d30d = now - 30 * 24 * 60 * 60 * 1000;
-
-  // Build per-site summary with computed fields
-  const sitesSummary = {};
-  let totalVisits = 0;
-  let totalUniqueIPs = 0;
-
-  for (const [siteName, siteData] of Object.entries(websiteSites)) {
-    const siteVisits = websiteVisits.filter(v => v.site === siteName);
-    const visits24h = siteVisits.filter(v => v.timestamp > d24h).length;
-    const visits7d = siteVisits.filter(v => v.timestamp > d7d).length;
-    const visits30d = siteVisits.filter(v => v.timestamp > d30d).length;
-    const uniqueIPCount = Object.keys(siteData.uniqueIPs || {}).length;
-    const avgTimeOnSite = siteData.visits > 0
-      ? Math.round((siteData.totalTimeSpent || 0) / siteData.visits)
-      : 0;
-
-    // Top 10 pages
-    const topPages = Object.entries(siteData.pages || {})
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .map(([page, count]) => ({ page, count }));
-
-    // Device breakdown
-    const deviceBreakdown = Object.entries(siteData.devices || {}).map(([name, value]) => ({ name, value }));
-    const browserBreakdown = Object.entries(siteData.browsers || {}).map(([name, value]) => ({ name, value }));
-    const osBreakdown = Object.entries(siteData.os || {}).map(([name, value]) => ({ name, value }));
-
-    // Recent visitors (last 20)
-    const recentVisitors = siteVisits.slice(-20).reverse().map(v => ({
-      page: v.page,
-      ip: v.ip,
-      device: v.device,
-      browser: v.browser,
-      os: v.os,
-      timeSpent: v.timeSpent,
-      timestamp: v.timestamp,
-      referrer: v.referrer,
-    }));
-
-    sitesSummary[siteName] = {
-      visits: siteData.visits || 0,
-      visits24h,
-      visits7d,
-      visits30d,
-      uniqueIPs: uniqueIPCount,
-      avgTimeOnSite,
-      totalTimeSpent: siteData.totalTimeSpent || 0,
-      topPages,
-      deviceBreakdown,
-      browserBreakdown,
-      osBreakdown,
-      recentVisitors,
-      firstSeen: siteData.firstSeen,
-      lastSeen: siteData.lastSeen,
-    };
-
-    totalVisits += siteData.visits || 0;
-    totalUniqueIPs += uniqueIPCount;
-  }
-
-  // Daily visit timeline (for chart)
-  const dailyVisits = {};
-  for (const v of websiteVisits) {
-    const day = new Date(v.timestamp).toISOString().split('T')[0];
-    if (!dailyVisits[day]) dailyVisits[day] = {};
-    if (!dailyVisits[day][v.site]) dailyVisits[day][v.site] = 0;
-    dailyVisits[day][v.site]++;
-  }
-
-  res.json({
-    sites: sitesSummary,
-    totalVisits,
-    totalUniqueIPs,
-    dailyVisits,
-    siteNames: Object.keys(websiteSites),
-    lastUpdated: Date.now(),
-  });
-});
-
-// Clear website analytics (admin)
-app.post('/api/webtrack/clear', authMiddleware, (req, res) => {
-  const { site } = req.body || {};
-  if (site) {
-    // Clear specific site
-    websiteVisits = websiteVisits.filter(v => v.site !== site);
-    delete websiteSites[site];
-  } else {
-    // Clear all
-    websiteVisits = [];
-    websiteSites = {};
-  }
-  saveWebsiteState();
-  res.json({ success: true, cleared: site || 'all' });
-});
-
 // Settings / connection info
 // Tolerate Telegram connection failures so the UI always loads — user can then fix the token via the form.
 app.get('/api/settings', authMiddleware, async (req, res) => {
@@ -1571,53 +1311,6 @@ app.post('/api/test-connection', authMiddleware, async (req, res) => {
   } catch (err) {
     res.json({ success: false, error: err.message });
   }
-});
-
-// ─── Website Tracking Script ────────────────────────────────────────
-// Serves the embeddable JS snippet for websites to use. Auto-detects the dashboard origin.
-app.get('/api/webtrack/tracker.js', (req, res) => {
-  const origin = `${req.protocol}://${req.headers.host || 'localhost'}`;
-  const script = `(function(){
-  var api = '${origin}/api/webtrack';
-  var site = window.location.hostname;
-  var startTime = Date.now();
-  var sent = false;
-  function send(data) {
-    if (sent) return;
-    var body = JSON.stringify(data);
-    try {
-      fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body, keepalive: true });
-    } catch(e) {
-      var x = new XMLHttpRequest();
-      x.open('POST', api, true);
-      x.setRequestHeader('Content-Type', 'application/json');
-      x.send(body);
-    }
-    sent = true;
-  }
-  function track(action, extra) {
-    if (sent) return;
-    var data = {
-      site: site,
-      page: window.location.pathname + window.location.search,
-      referrer: document.referrer || '',
-      screenWidth: window.screen ? window.screen.width : 0,
-      screenHeight: window.screen ? window.screen.height : 0,
-      timeSpent: Math.round((Date.now() - startTime) / 1000),
-    };
-    if (extra) { for (var k in extra) { data[k] = extra[k]; } }
-    send(data);
-  }
-  track('visit');
-  if (document.visibilityState === 'visible') {
-    document.addEventListener('visibilitychange', function() {
-      if (document.visibilityState === 'hidden') track('leave');
-    });
-  }
-})();`;
-  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=3600');
-  res.send(script);
 });
 
 // ─── Serve Static Files (Production) ───────────────────────
