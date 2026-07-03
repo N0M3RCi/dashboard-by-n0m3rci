@@ -1,26 +1,32 @@
 {
-  "name": "dashboard-by-n0m3rci",
+  "name": "n0m3rci-bot-dashboard",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
+  "description": "N0M3RCi Telegram Bot \u2014 Admin Dashboard",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:ui\"",
+    "dev:ui": "vite",
+    "dev:api": "node server/index.js",
     "build": "vite build",
-    "start": "node server.js",
-    "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "node server/index.js"
   },
   "dependencies": {
-    "@tailwindcss/vite": "^4.3.0",
+    "concurrently": "^10.0.1",
+    "cors": "^2.8.6",
+    "dotenv": "^16.4.5",
     "express": "^5.2.1",
     "lucide-react": "^1.17.0",
+    "node-persist": "^4.0.4",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "recharts": "^3.8.1",
-    "tailwindcss": "^4.3.0"
+    "react-router-dom": "^7.16.0",
+    "recharts": "^3.8.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@tailwindcss/vite": "^4.3.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
@@ -28,6 +34,10 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
+    "tailwindcss": "^4.3.0",
     "vite": "^8.0.12"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }

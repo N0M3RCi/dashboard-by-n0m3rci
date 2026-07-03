@@ -4,11 +4,9 @@ import { MessageSquare, Users, Terminal, UserPlus, RefreshCw, ExternalLink, Arro
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 export default function Dashboard() {
-  const { data, loading, refresh } = useApi('/api/overview', 2000);
+  const { data, loading, refresh } = useApi('/overview', 2000);
   const [syncing, setSyncing] = useState(false);
   const [syncFlash, setSyncFlash] = useState(false);
-  const [nextSync, setNextSync] = useState(5);
-
   // Live state overrides to support sub-second real-time streaming counters
   const [liveMessages, setLiveMessages] = useState(0);
   const [liveSubscribers, setLiveSubscribers] = useState(0);
@@ -20,24 +18,36 @@ export default function Dashboard() {
 
   // Real-time Event Stream / Terminal log state
   const [liveLogs, setLiveLogs] = useState([]);
+  const terminalEndRef = useRef(null);
   const terminalContainerRef = useRef(null);
+  const isUserScrolledUp = useRef(false);
   const lastPollLogTime = useRef(0);
   const lastSyncLogTime = useRef(0);
   const POLL_LOG_INTERVAL = 30 * 60 * 1000; // 30 minutes
   const SYNC_LOG_INTERVAL = 30 * 60 * 1000; // 30 minutes
 
+  // Called by the "Refresh Now" button to force log POLL/SYNC immediately
   const forceLogRefresh = useRef(null);
 
-  // No scroll manipulation — CSS column-reverse handles bottom-anchoring natively
-  // Logs stored as [newest, ..., oldest] so column-reverse displays newest at visual bottom
+  // Track if user has manually scrolled up
+  const handleTerminalScroll = () => {
+    if (!terminalContainerRef.current) return;
+    const el = terminalContainerRef.current;
+    const threshold = 40; // px from bottom
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+    isUserScrolledUp.current = !atBottom;
+  };
 
+  // Ingest health state for diagnosing "no data in dashboard"
   const [isLiveConnected, setIsLiveConnected] = useState(false);
   const [lastIngestTs, setLastIngestTs] = useState(null);
   const [ingestReports, setIngestReports] = useState(0);
 
+  // Sync initial state with fetched API data
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (data) {
+      // Prefer authoritative cycle/display values (so auto 2000 resets + manual resets are reflected immediately)
       const c = data.cycles || {};
       setLiveMessages(typeof c.messages === 'number' ? c.messages : (data.messages30d || 0));
       setLiveSubscribers(typeof c.subscribers === 'number' ? c.subscribers : (data.subscribers || 0));
@@ -50,21 +60,23 @@ export default function Dashboard() {
       if (data.lastEventReceived) setLastIngestTs(data.lastEventReceived);
       if (typeof data.reportsReceived === 'number') setIngestReports(data.reportsReceived);
 
+      // Log overview poll to debug terminal (throttled to every 30 min)
       const now = Date.now();
       if (forceLogRefresh.current || now - lastPollLogTime.current >= POLL_LOG_INTERVAL) {
         lastPollLogTime.current = now;
-        forceLogRefresh.current = false;
+        forceLogRefresh.current = false; // reset after both SYNC & POLL have consumed it
         const ts = new Date().toLocaleTimeString();
         const subs = data.subscribers || 0;
         const msgs = data.messages30d || 0;
         const cmds = data.commandsFired || 0;
         const reports = data.reportsReceived || 0;
-        setLiveLogs(prev => [`[${ts}] [POLL] Overview — msgs:${msgs} subs:${subs} cmds:${cmds} reports:${reports} latency:${data.latency || 0}ms`, ...prev.slice(-29)]);
+        setLiveLogs(prev => [...prev.slice(-30), `[${ts}] [POLL] Overview — msgs:${msgs} subs:${subs} cmds:${cmds} reports:${reports} latency:${data.latency || 0}ms`]);
       }
     }
   }, [data]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
+  // Connect to SSE (Server Sent Events) for true sub-second real-time updates
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     const sse = new EventSource('/api/events/stream');
@@ -77,8 +89,9 @@ export default function Dashboard() {
       const modelStr = payload.model ? ` [Model: ${payload.model}]` : '';
       const tokenStr = payload.tokens ? ` (${payload.tokens} tokens)` : '';
 
+      // Append clean terminal logs
       const logMsg = `[${timestamp}] [${type.toUpperCase()}] ${userStr} in ${payload.chat?.type || 'private'}: ${detailStr}${modelStr}${tokenStr}`;
-      setLiveLogs(prev => [logMsg, ...prev.slice(-29)]);
+      setLiveLogs(prev => [...prev.slice(-30), logMsg]);
 
       if (payload.model) {
         setLastModel(payload.model);
@@ -87,6 +100,9 @@ export default function Dashboard() {
         setLiveTokens(prev => prev + payload.tokens);
       }
 
+      // Prefer authoritative cycle counts from server payload (attached on every ingest/SSE event).
+      // This ensures 1) sub-second accurate display, 2) resets never missed (client +1 would drift past 2000),
+      // 3) accumulation respects the "no reset BEFORE 2000" + accurate underlying vs display distinction.
       if (payload.cycles) {
         const c = payload.cycles;
         if (typeof c.messages === 'number') setLiveMessages(c.messages);
@@ -94,12 +110,14 @@ export default function Dashboard() {
         if (typeof c.commands === 'number') setLiveCommands(c.commands);
         if (typeof c.newUsers === 'number') setLiveNewUsers(c.newUsers);
       } else if (type === 'reset' && payload.cycles) {
+        // explicit reset type broadcast also authoritative
         const c = payload.cycles;
         if (typeof c.messages === 'number') setLiveMessages(c.messages);
         if (typeof c.subscribers === 'number') setLiveSubscribers(c.subscribers);
         if (typeof c.commands === 'number') setLiveCommands(c.commands);
         if (typeof c.newUsers === 'number') setLiveNewUsers(c.newUsers);
       } else {
+        // Fallback legacy behavior (if server not sending cycles yet for some events)
         if (type === 'message' || type === 'command') {
           setLiveMessages(prev => prev + 1);
         }
@@ -118,7 +136,7 @@ export default function Dashboard() {
         const parsed = JSON.parse(e.data);
         handleEvent(parsed.type, parsed.data);
       } catch (err) {
-        void err;
+        void err; // Safe catch
       }
     });
 
@@ -134,6 +152,7 @@ export default function Dashboard() {
         const m = JSON.parse(e.data);
         if (m.lastEventReceived) setLastIngestTs(m.lastEventReceived);
         if (typeof m.reportCount === 'number') setIngestReports(m.reportCount);
+        // if meta carries cycles authoritative, apply (for complete reset prop)
         if (m.cycles) {
           const c = m.cycles;
           if (typeof c.messages === 'number') setLiveMessages(c.messages);
@@ -141,11 +160,13 @@ export default function Dashboard() {
           if (typeof c.commands === 'number') setLiveCommands(c.commands);
           if (typeof c.newUsers === 'number') setLiveNewUsers(c.newUsers);
         }
-      } catch { /* ignore parse error */ }
+      } catch { /* ignore parse error on ingest metadata */ }
     });
 
+    // Handle standard network error retry
     sse.onerror = () => {
       setIsLiveConnected(false);
+      // Automatic browser reconnect + reassert flag on open handled by browser
     };
 
     sse.onopen = () => setIsLiveConnected(true);
@@ -157,7 +178,12 @@ export default function Dashboard() {
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  // No auto-scroll — CSS column-reverse keeps the terminal pinned to the bottom natively
+  // Scroll terminal logs to bottom — only scroll the container, not the whole page
+  useEffect(() => {
+    if (!isUserScrolledUp.current && terminalContainerRef.current) {
+      terminalContainerRef.current.scrollTop = terminalContainerRef.current.scrollHeight;
+    }
+  }, [liveLogs]);
 
   const handleSync = async () => {
     setSyncing(true);
@@ -166,40 +192,23 @@ export default function Dashboard() {
     if (shouldLogSync) lastSyncLogTime.current = now;
     if (shouldLogSync) {
       const ts = new Date().toLocaleTimeString();
-      setLiveLogs(prev => [`[${ts}] [SYNC] Starting Telegram API pull...`, ...prev.slice(-29)]);
+      setLiveLogs(prev => [...prev.slice(-30), `[${ts}] [SYNC] Starting Telegram API pull...`]);
     }
     try {
-      const result = await apiPost('/api/sync');
+      const result = await apiPost('/sync');
       if (shouldLogSync) {
         const ts = new Date().toLocaleTimeString();
-        setLiveLogs(prev => [`[${ts}] [SYNC] Done — ${result.newMessages || 0} new msgs, ${result.newUsers || 0} new users (${result.elapsed || 0}ms)`, ...prev.slice(-29)]);
+        setLiveLogs(prev => [...prev.slice(-30), `[${ts}] [SYNC] Done — ${result.newMessages || 0} new msgs, ${result.newUsers || 0} new users (${result.elapsed || 0}ms)`]);
       }
     } catch (e) {
       const ts = new Date().toLocaleTimeString();
-      setLiveLogs(prev => [`[${ts}] [SYNC] Failed — ${e.message || 'unknown error'}`, ...prev.slice(-29)]);
+      setLiveLogs(prev => [...prev.slice(-30), `[${ts}] [SYNC] Failed — ${e.message || 'unknown error'}`]);
     }
     setSyncing(false);
     setSyncFlash(true);
     setTimeout(() => setSyncFlash(false), 1400);
-    setNextSync(5);
     refresh();
   };
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setNextSync(prev => (prev <= 0 ? 5 : prev - 1));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    if (nextSync === 0) handleSync();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nextSync]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
-  const formatTime = (s) => `${s}s`;
 
 
   if (loading && !data) {
@@ -225,8 +234,10 @@ export default function Dashboard() {
 
   const d = data || {};
 
+  // Premium empty-state guidance to fix the common "0 everything" situation
   const hasAnyIngest = (liveMessages + liveSubscribers + liveCommands + (ingestReports || 0) + (d.reportsReceived || 0)) > 0;
 
+  // Build safe dummy/mock line chart details based on total message density to ensure beautiful charting
   const hourlyChartData = [
     { hour: '00:00', messages: Math.round(liveMessages * 0.02) },
     { hour: '04:00', messages: Math.round(liveMessages * 0.01) },
@@ -239,22 +250,33 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-5 animate-in">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary">Dashboard Overview</h1>
+          <p className="text-xs text-text-muted mt-0.5">Real-time bot metrics, AI telemetry, and data ingestion status</p>
+        </div>
+        
+        
+        
+      </div>
+
       {/* Sync Bar */}
       <div className="sync-bar flex items-center justify-between flex-wrap gap-3 bg-surface-800 border border-border/60 p-3 rounded-2xl">
         <div className="flex items-center gap-3 flex-wrap min-w-0">
           <span className="badge badge-green text-[11px] flex items-center gap-1.5 px-2.5 py-1 font-bold">
             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" /> SYSTEM RUNNING
           </span>
+          {/* NEW: Prominent data ingest status to diagnose receiving metrics from bot API */}
           <span className={`badge text-[10px] flex items-center gap-1.5 px-2.5 py-1 font-bold ${isLiveConnected && lastIngestTs ? 'badge-green' : (isLiveConnected ? 'badge-yellow' : 'badge-red')}`}>
             <span className={`w-1.5 h-1.5 rounded-full ${isLiveConnected && lastIngestTs ? 'bg-green-500' : (isLiveConnected ? 'bg-yellow-500 animate-pulse' : 'bg-red-500')} inline-block`} />
-            {isLiveConnected && lastIngestTs ? 'DATA PIPE LIVE' : isLiveConnected ? 'SSE OK \u2022 AWAIT BOT EVENTS' : 'SSE DISCONNECTED'}
+            {isLiveConnected && lastIngestTs ? 'DATA PIPE LIVE' : isLiveConnected ? 'SSE OK • AWAIT BOT EVENTS' : 'SSE DISCONNECTED'}
           </span>
-          <span className="text-xs text-text-muted">Next sync: <strong className="text-text-primary">{formatTime(nextSync)}</strong></span>
-          <span className="text-xs text-text-muted">Latency: <strong className="text-text-primary">\u26A1 {liveLatency || 32}ms</strong></span>
+          <span className="text-xs text-text-muted">Latency: <strong className="text-text-primary">⚡ {liveLatency || 32}ms</strong></span>
         </div>
         <button onClick={handleSync} disabled={syncing} className={`btn-primary text-xs shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all ${syncFlash ? 'scale-[0.985] ring-1 ring-primary/60' : ''}`}>
           <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-          {syncFlash ? 'Pulled live \u2713' : (syncing ? 'Syncing from TG\u2026' : 'Sync now')}
+          {syncFlash ? 'Pulled live ✓' : (syncing ? 'Syncing from TG…' : 'Sync now')}
         </button>
       </div>
 
@@ -263,7 +285,7 @@ export default function Dashboard() {
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className="badge badge-green text-[11px]">\u25CF Online</span>
+              <span className="badge badge-green text-[11px]">● Online</span>
               <span className="badge badge-yellow text-[11px] flex items-center gap-1"><Cpu size={12} /> SMART ROUTING READY</span>
             </div>
             <h2 className="text-xl font-bold text-text-primary truncate">
@@ -275,6 +297,7 @@ export default function Dashboard() {
             </a>
           </div>
 
+          {/* Mini stats */}
           <div className="flex gap-3 flex-wrap shrink-0">
             <MiniStat label="Groups" value={d.groupCount || 0} />
             <MiniStat label="Active 24H" value={d.activeMembers24h || 0} />
@@ -283,7 +306,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPI Cards (Sub-second glowing animated counters) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard icon={MessageSquare} label="Messages 30D" value={liveMessages} change={d.weekChange || 0} isLive />
         <KPICard icon={Users} label="Subscribers" value={liveSubscribers} change={d.weekChange || 0} isLive />
@@ -291,15 +314,16 @@ export default function Dashboard() {
         <KPICard icon={UserPlus} label="New Users 24H" value={liveNewUsers} change={d.weekChange || 0} isLive />
       </div>
 
-      {/* Ingest Telemetry */}
+      {/* Ingest Telemetry / Data Health (pro tier $6k feature: immediate visibility into whether bot->dashboard pipe works; crucial fix for "no data" cases) */}
       <div className="text-[11px] flex flex-wrap items-center gap-x-4 gap-y-1 text-text-muted bg-surface-800 border border-border/70 rounded-xl px-4 py-2 font-mono">
         <span className="uppercase tracking-[1px] text-primary font-semibold">INGEST</span>
         <span>SSE: <span className={isLiveConnected ? 'text-success' : 'text-danger'}>{isLiveConnected ? 'CONNECTED' : 'OFFLINE'}</span></span>
         <span>Reports: <span className="text-text-primary font-semibold">{ingestReports || d.reportsReceived || 0}</span> total</span>
         <span>Last event: <span className="text-text-primary font-semibold">{lastIngestTs || d.lastEventReceived ? new Date(lastIngestTs || d.lastEventReceived).toLocaleTimeString() : 'never (send bot msg)'}</span></span>
+        <span className="text-[10px] text-text-muted/60"></span>
       </div>
 
-      {/* Debug Log Terminal */}
+      {/* Debug Log Terminal — real-time SSE event stream */}
       <div className="card p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -314,10 +338,12 @@ export default function Dashboard() {
             <button
               onClick={() => {
                 forceLogRefresh.current = true;
+                // Trigger a POLL log immediately (the data effect will pick up forceLogRefresh)
                 refresh();
+                // Also manually add a SYNC log entry right now
                 const ts = new Date().toLocaleTimeString();
-                lastSyncLogTime.current = 0;
-                setLiveLogs(prev => [`[${ts}] [SYNC] Refreshing now...`, ...prev.slice(-29)]);
+                lastSyncLogTime.current = 0; // Allow next sync to log regardless of timer
+                setLiveLogs(prev => [...prev.slice(-30), `[${ts}] [SYNC] Refreshing now...`]);
               }}
               className="text-[10px] text-primary hover:text-primary-dark transition-colors px-2 py-1 rounded-lg hover:bg-primary/10 font-medium flex items-center gap-1"
             >
@@ -330,7 +356,7 @@ export default function Dashboard() {
             )}
           </div>
         </div>
-        <div ref={terminalContainerRef} style={{ display: 'flex', flexDirection: 'column-reverse', overscrollBehavior: 'contain' }} className="bg-black/50 border border-border/60 rounded-xl p-3 h-48 overflow-y-auto font-mono text-[11px] leading-relaxed">
+        <div ref={terminalContainerRef} onScroll={handleTerminalScroll} className="bg-black/50 border border-border/60 rounded-xl p-3 h-48 overflow-y-auto font-mono text-[11px] leading-relaxed">
           {liveLogs.length === 0 ? (
             <p className="text-text-muted/60 italic">Waiting for events from the bot — send a message to your Telegram bot to see activity here...</p>
           ) : (
@@ -340,10 +366,11 @@ export default function Dashboard() {
               </div>
             ))
           )}
+          <div ref={terminalEndRef} />
         </div>
       </div>
 
-      {/* No Data Yet */}
+      {/* Professional Setup Guidance — shows only if zero activity yet. This is THE cure for the reported "no data" state */}
       {!hasAnyIngest && (
         <div className="card p-4 border-l-4 border-l-primary bg-surface-900/60">
           <p className="text-sm font-medium text-text-primary mb-1">No data moving yet — 100% normal until the live bot actively POSTs real user interactions.</p>
@@ -365,7 +392,7 @@ export default function Dashboard() {
               <h3 className="text-sm font-semibold text-text-primary">Hourly Message Velocity</h3>
               <p className="text-[11px] text-text-muted">Real-time aggregate activity timeline</p>
             </div>
-            <span className="badge badge-green text-[11px]">\u25CF Active timeline</span>
+            <span className="badge badge-green text-[11px]">● Active timeline</span>
           </div>
           <div className="h-44 w-full text-xs">
             <ResponsiveContainer width="100%" height="100%">
@@ -389,7 +416,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* AI Engine Telemetry */}
+        {/* Live AI Engine & Cost Analytics Monitor */}
         <div className="card p-5 overflow-hidden flex flex-col h-full justify-between">
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -402,6 +429,7 @@ export default function Dashboard() {
             </div>
             <p className="text-[11px] text-text-muted mb-4">Real-time OpenAI token spend & routing</p>
 
+            {/* Token Counter & Cost Metrics */}
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div className="bg-surface-900 border border-border/40 p-3 rounded-xl">
                 <span className="text-[10px] text-text-muted font-medium uppercase tracking-wider block">Processed Tokens</span>
@@ -419,6 +447,7 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {/* Monthly Budget Tracker */}
             <div className="mb-4">
               <div className="flex items-center justify-between text-[10px] font-medium text-text-muted mb-1.5">
                 <span>Monthly Budget Utilization</span>
@@ -433,6 +462,7 @@ export default function Dashboard() {
             </div>
           </div>
 
+          {/* Model Status & Dynamic Active Routing */}
           <div className="border-t border-border/40 pt-3">
             <span className="text-[10px] text-text-muted font-medium uppercase tracking-wider block mb-2">Smart Model Router</span>
             <div className="space-y-2">
@@ -482,6 +512,7 @@ function MiniStat({ label, value, variant }) {
 }
 
 function KPICard({ icon: Icon, label, value, change, isLive }) {
+  // Flash effect on value updates
   const [flash, setFlash] = useState(false);
   const prevValue = useRef(value);
 

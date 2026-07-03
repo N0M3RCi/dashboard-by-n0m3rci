@@ -38,14 +38,13 @@ body {
   margin: 0;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
-  overflow-anchor: none;
-  scroll-behavior: auto;
 }
 
 #root {
   min-height: 100vh;
 }
 
+/* Cards */
 .card {
   background: var(--color-surface-800);
   border: 1px solid var(--color-border);
@@ -66,12 +65,14 @@ body {
   overflow: hidden;
 }
 
+/* Navigation */
 .nav-active {
   background: var(--color-primary-glow);
   border-left: 3px solid var(--color-primary);
   color: var(--color-primary);
 }
 
+/* Buttons */
 .btn-primary {
   background: var(--color-primary);
   color: #000000;
@@ -124,6 +125,7 @@ body {
   cursor: not-allowed;
 }
 
+/* Badges */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -159,6 +161,7 @@ body {
   border: 1px solid var(--color-border-light);
 }
 
+/* Live dot */
 .live-dot {
   width: 8px;
   height: 8px;
@@ -172,6 +175,7 @@ body {
   50% { opacity: 0.3; }
 }
 
+/* Sync bar */
 .sync-bar {
   background: var(--color-surface-700);
   border: 1px solid var(--color-border);
@@ -180,6 +184,7 @@ body {
   overflow: hidden;
 }
 
+/* KPI underline */
 .kpi-line {
   height: 3px;
   background: linear-gradient(90deg, var(--color-primary), var(--color-primary-dark));
@@ -187,6 +192,7 @@ body {
   margin-top: 14px;
 }
 
+/* Input styling */
 .input-field {
   width: 100%;
   background: var(--color-surface-700);
@@ -208,6 +214,7 @@ body {
   color: var(--color-text-muted);
 }
 
+/* Table */
 .table-row {
   border-bottom: 1px solid var(--color-border);
   transition: background 0.15s;
@@ -217,6 +224,7 @@ body {
   background: var(--color-surface-700);
 }
 
+/* Animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
@@ -231,11 +239,13 @@ body {
   100% { background-position: 200% center; }
 }
 
+/* Snow Animation */
 @keyframes snow-fall {
   0% {
     transform: translateY(-20px) translateX(0) rotate(0deg);
   }
   50% {
+    /* Slight horizontal sway in the middle of descent */
     transform: translateY(50vh) translateX(calc(var(--wind-drift, 0px) * 0.5)) rotate(180deg);
   }
   100% {
@@ -250,6 +260,7 @@ body {
   will-change: transform;
 }
 
+/* Fog/Cloud Animations */
 @keyframes fog-slow {
   0%, 100% {
     opacity: 0.6;
@@ -283,6 +294,7 @@ body {
   will-change: transform;
 }
 
+/* Scrollbar for overflow containers */
 .scroll-container {
   overflow-y: auto;
   overflow-x: hidden;
@@ -301,6 +313,7 @@ body {
   border-radius: 4px;
 }
 
+/* Overflow protection */
 .text-truncate {
   overflow: hidden;
   text-overflow: ellipsis;
