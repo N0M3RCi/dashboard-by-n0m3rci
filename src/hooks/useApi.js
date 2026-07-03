@@ -1,134 +1,39 @@
 import { useState, useEffect, useCallback } from 'react';
 
-// Tiny in-memory cross-component endpoint cache for instant perceived load on menu switches
-// (stale data returned immediately while background revalidation keeps metrics fresh)
-// Heavily reduces load feel on all sidebar pages especially when switching back and forth.
-const endpointCache = new Map(); // endpoint -> {data, ts}
+export function useApi(endpoint, interval = null) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-// Global toast dispatch — used by useApi and apiPost to surface errors
-export function showToast(message, type = 'error', duration = 6000) {
-  window.dispatchEvent(new CustomEvent('show-toast', { detail: { message, type, duration } }));
-}
-
-// Report errors to the server-side error log
-export function reportError(message, source = 'client', details = {}) {
-  try {
-    fetch('/api/errors', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer bypass-no-password' },
-      body: JSON.stringify({ message, source, details }),
-    }).catch(() => {});
-  } catch { /* ignore */ }
-}
-
-export function useApi(endpoint, refreshInterval = 0) {
-  const cacheKey = endpoint;
-  const cached = endpointCache.get(cacheKey);
-  const [data, setData] = useState(() => cached ? cached.data : null);
-  const [loading, setLoading] = useState(() => !cached); // skip initial spinner if we had prior data
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState(null);
-
-  const fetchData = useCallback(async (isBackground = false) => {
-    const token = localStorage.getItem('dashToken') || 'bypass-no-password';
-    if (!localStorage.getItem('dashToken')) {
-      localStorage.setItem('dashToken', 'bypass-no-password');
-    }
-
-    if (isBackground) setIsRefreshing(true);
-    else if (!data) setLoading(true); // first time only
-
+  const fetchData = useCallback(async () => {
     try {
-      const res = await fetch(`/api${endpoint}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.status === 401) {
-        localStorage.removeItem('dashToken');
-        window.location.href = '/login';
-        return;
-      }
+      const res = await fetch(endpoint);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-
-      endpointCache.set(cacheKey, { data: json, ts: Date.now() });
       setData(json);
-      setError(null);
-    } catch (err) {
-      setError(err.message);
-      // Report to server-side error log
-      reportError(err.message, 'client', { url: endpoint, status: err.message.includes('HTTP') ? err.message.split(' ')[1] : '' });
-      // Show toast for background/auto refreshes (silent for initial load to avoid spam)
-      if (isBackground && refreshInterval > 0) {
-        showToast(`Failed to load ${endpoint}: ${err.message}`, 'error', 5000);
-      }
+    } catch (e) {
+      console.error('API fetch error:', e);
     } finally {
       setLoading(false);
-      setIsRefreshing(false);
     }
-  }, [endpoint, data, cacheKey, refreshInterval]);
+  }, [endpoint]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    const now = Date.now();
-    const c = endpointCache.get(cacheKey);
-    if (c && (now - c.ts) < 16000) {
-      // Have recent cached data already hydrated from useState initializer (instant metrics/load across menus).
-      // Background-refresh only to stay fresh. No setState in effect body here to obey React purity.
-      setTimeout(() => fetchData(true), 90);
-    } else {
-      fetchData(false);
+    fetchData();
+    if (interval) {
+      const id = setInterval(fetchData, interval);
+      return () => clearInterval(id);
     }
+  }, [fetchData, interval]);
 
-    const handleGlobalRefresh = () => {
-      fetchData(true);
-    };
-    window.addEventListener('api-refresh', handleGlobalRefresh);
-
-    let interval;
-    if (refreshInterval > 0) {
-      interval = setInterval(() => fetchData(true), refreshInterval);
-    }
-
-    return () => {
-      window.removeEventListener('api-refresh', handleGlobalRefresh);
-      if (interval) clearInterval(interval);
-    };
-  }, [fetchData, refreshInterval, cacheKey]);
-
-  const refresh = useCallback(() => fetchData(true), [fetchData]);
-
-  return { data, loading, isRefreshing, error, refresh };
+  return { data, loading, refresh: fetchData };
 }
 
 export async function apiPost(endpoint, body = {}) {
-  // Always post with bypass token if missing — guarantees saves /manual sync succeed and data refreshes even on direct visit.
-  let token = localStorage.getItem('dashToken');
-  if (!token) {
-    token = 'bypass-no-password';
-    localStorage.setItem('dashToken', token);
-  }
-
-  let res;
-  try {
-    res = await fetch(`/api${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(body),
-    });
-  } catch (err) {
-    reportError(`POST ${endpoint} failed: ${err.message}`, 'client', { url: endpoint });
-    showToast(`Network error: ${err.message}`, 'error');
-    throw err;
-  }
-
-  if (endpoint === '/sync') {
-    // Force-fresh all cached data from TG: clear in-memory endpointCache so open pages + any sidebar switch re-pulls live results as soon as sync completes.
-    endpointCache.clear();
-    window.dispatchEvent(new CustomEvent('api-refresh'));
-  }
-
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
