@@ -4,7 +4,7 @@ import { MessageSquare, Users, Terminal, UserPlus, RefreshCw, ExternalLink, Arro
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 export default function Dashboard() {
-  const { data, loading, refresh } = useApi('/overview', 2000);
+  const { data, loading, refresh } = useApi('/api/overview', 2000);
   const [syncing, setSyncing] = useState(false);
   const [syncFlash, setSyncFlash] = useState(false);
   const [nextSync, setNextSync] = useState(5);
@@ -28,15 +28,8 @@ export default function Dashboard() {
 
   const forceLogRefresh = useRef(null);
 
-  // Track whether user is at bottom of the terminal container (for internal auto-scroll only)
-  const isUserAtTerminalBottom = useRef(true);
-
-  const handleTerminalScroll = () => {
-    if (!terminalContainerRef.current) return;
-    const el = terminalContainerRef.current;
-    const threshold = 30;
-    isUserAtTerminalBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
-  };
+  // No scroll manipulation — CSS column-reverse handles bottom-anchoring natively
+  // Logs stored as [newest, ..., oldest] so column-reverse displays newest at visual bottom
 
   const [isLiveConnected, setIsLiveConnected] = useState(false);
   const [lastIngestTs, setLastIngestTs] = useState(null);
@@ -66,7 +59,7 @@ export default function Dashboard() {
         const msgs = data.messages30d || 0;
         const cmds = data.commandsFired || 0;
         const reports = data.reportsReceived || 0;
-        setLiveLogs(prev => [...prev.slice(-30), `[${ts}] [POLL] Overview — msgs:${msgs} subs:${subs} cmds:${cmds} reports:${reports} latency:${data.latency || 0}ms`]);
+        setLiveLogs(prev => [`[${ts}] [POLL] Overview — msgs:${msgs} subs:${subs} cmds:${cmds} reports:${reports} latency:${data.latency || 0}ms`, ...prev.slice(-29)]);
       }
     }
   }, [data]);
@@ -85,7 +78,7 @@ export default function Dashboard() {
       const tokenStr = payload.tokens ? ` (${payload.tokens} tokens)` : '';
 
       const logMsg = `[${timestamp}] [${type.toUpperCase()}] ${userStr} in ${payload.chat?.type || 'private'}: ${detailStr}${modelStr}${tokenStr}`;
-      setLiveLogs(prev => [...prev.slice(-30), logMsg]);
+      setLiveLogs(prev => [logMsg, ...prev.slice(-29)]);
 
       if (payload.model) {
         setLastModel(payload.model);
@@ -164,12 +157,7 @@ export default function Dashboard() {
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  // Auto-scroll terminal container downward — only when user is already at the bottom of it
-  useEffect(() => {
-    if (isUserAtTerminalBottom.current && terminalContainerRef.current) {
-      terminalContainerRef.current.scrollTop = terminalContainerRef.current.scrollHeight;
-    }
-  }, [liveLogs]);
+  // No auto-scroll — CSS column-reverse keeps the terminal pinned to the bottom natively
 
   const handleSync = async () => {
     setSyncing(true);
@@ -178,17 +166,17 @@ export default function Dashboard() {
     if (shouldLogSync) lastSyncLogTime.current = now;
     if (shouldLogSync) {
       const ts = new Date().toLocaleTimeString();
-      setLiveLogs(prev => [...prev.slice(-30), `[${ts}] [SYNC] Starting Telegram API pull...`]);
+      setLiveLogs(prev => [`[${ts}] [SYNC] Starting Telegram API pull...`, ...prev.slice(-29)]);
     }
     try {
-      const result = await apiPost('/sync');
+      const result = await apiPost('/api/sync');
       if (shouldLogSync) {
         const ts = new Date().toLocaleTimeString();
-        setLiveLogs(prev => [...prev.slice(-30), `[${ts}] [SYNC] Done — ${result.newMessages || 0} new msgs, ${result.newUsers || 0} new users (${result.elapsed || 0}ms)`]);
+        setLiveLogs(prev => [`[${ts}] [SYNC] Done — ${result.newMessages || 0} new msgs, ${result.newUsers || 0} new users (${result.elapsed || 0}ms)`, ...prev.slice(-29)]);
       }
     } catch (e) {
       const ts = new Date().toLocaleTimeString();
-      setLiveLogs(prev => [...prev.slice(-30), `[${ts}] [SYNC] Failed — ${e.message || 'unknown error'}`]);
+      setLiveLogs(prev => [`[${ts}] [SYNC] Failed — ${e.message || 'unknown error'}`, ...prev.slice(-29)]);
     }
     setSyncing(false);
     setSyncFlash(true);
@@ -329,7 +317,7 @@ export default function Dashboard() {
                 refresh();
                 const ts = new Date().toLocaleTimeString();
                 lastSyncLogTime.current = 0;
-                setLiveLogs(prev => [...prev.slice(-30), `[${ts}] [SYNC] Refreshing now...`]);
+                setLiveLogs(prev => [`[${ts}] [SYNC] Refreshing now...`, ...prev.slice(-29)]);
               }}
               className="text-[10px] text-primary hover:text-primary-dark transition-colors px-2 py-1 rounded-lg hover:bg-primary/10 font-medium flex items-center gap-1"
             >
@@ -342,7 +330,7 @@ export default function Dashboard() {
             )}
           </div>
         </div>
-        <div ref={terminalContainerRef} onScroll={handleTerminalScroll} className="bg-black/50 border border-border/60 rounded-xl p-3 h-48 overflow-y-auto font-mono text-[11px] leading-relaxed">
+        <div ref={terminalContainerRef} style={{ display: 'flex', flexDirection: 'column-reverse', overscrollBehavior: 'contain' }} className="bg-black/50 border border-border/60 rounded-xl p-3 h-48 overflow-y-auto font-mono text-[11px] leading-relaxed">
           {liveLogs.length === 0 ? (
             <p className="text-text-muted/60 italic">Waiting for events from the bot — send a message to your Telegram bot to see activity here...</p>
           ) : (
