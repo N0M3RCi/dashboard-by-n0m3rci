@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -13,8 +14,44 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const app = express();
-app.use(cors());
+const dashboardOrigin = process.env.DASHBOARD_ORIGIN;
+app.use(cors(dashboardOrigin ? { origin: dashboardOrigin, credentials: true } : { origin: false }));
 app.use(express.json());
+
+const sessions = new Set();
+
+function safeEqual(left, right) {
+  const a = Buffer.from(String(left));
+  const b = Buffer.from(String(right));
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+function readCookie(req, name) {
+  const raw = req.headers.cookie || '';
+  for (const part of raw.split(';')) {
+    const [key, ...rest] = part.trim().split('=');
+    if (key === name) return decodeURIComponent(rest.join('='));
+  }
+  return '';
+}
+
+function sessionToken(req) {
+  const header = req.headers.authorization || '';
+  if (header.startsWith('Bearer ')) return header.slice(7);
+  return readCookie(req, 'dash_session');
+}
+
+function isAuthed(req) {
+  const token = sessionToken(req);
+  return Boolean(token && sessions.has(token));
+}
+
+function maskToken(token) {
+  if (!token) return '';
+  if (token.length <= 4) return '••••';
+  return `••••${token.slice(-4)}`;
+}
 
 // Persistent settings + analytics files — HARD REQUIREMENT for data not disappearing.
 // On Railway: attach a Volume in the service dashboard (Data > Volumes). Railway will
@@ -393,12 +430,14 @@ async function syncUpdates() {
         cycleSubscribers = (cycleSubscribers + 1) % 2000;
         cycleNewUsers = (cycleNewUsers + 1) % 2000;
       }
+      const existingSub = subscribers.get(user.id) || {};
       subscribers.set(user.id, {
+        ...existingSub,
         id: user.id,
-        first_name: user.first_name || '',
-        last_name: user.last_name || '',
-        username: user.username || '',
-        language_code: user.language_code || 'en',
+        first_name: user.first_name || existingSub.first_name || '',
+        last_name: user.last_name || existingSub.last_name || '',
+        username: user.username || existingSub.username || '',
+        language_code: user.language_code || existingSub.language_code || 'en',
         lastSeen: msg.date * 1000,
       });
     }
@@ -486,15 +525,27 @@ async function getFullBotMeta() {
 // ─── Auth middleware ──────────────────────────────────────
 
 function authMiddleware(req, res, next) {
-  // Always authorized - bypass password logic completely
-  next();
+  if (isAuthed(req)) return next();
+  return res.status(401).json({ error: 'Login required' });
 }
 
 // ─── Routes ───────────────────────────────────────────────
 
 // Login
 app.post('/api/login', (req, res) => {
-  res.json({ success: true, token: 'bypass-no-password' });
+  const expected = process.env.DASHBOARD_PASSWORD || '';
+  if (!expected) {
+    return res.status(503).json({ error: 'Set DASHBOARD_PASSWORD on the server before signing in.' });
+  }
+  const given = req.body?.password || '';
+  if (!safeEqual(given, expected)) {
+    return res.status(401).json({ error: 'Wrong password' });
+  }
+  const token = crypto.randomBytes(32).toString('hex');
+  sessions.add(token);
+  const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+  res.setHeader('Set-Cookie', `dash_session=${token}; HttpOnly; SameSite=Lax; Path=/${secure}`);
+  return res.json({ success: true, token });
 });
 
 // Health
@@ -503,7 +554,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Ultra-detailed diagnostics (for Railway troubleshooting "no data received")
-app.get('/api/diag', (req, res) => {
+app.get('/api/diag', authMiddleware, (req, res) => {
   const volumeFromEnv = process.env.RAILWAY_VOLUME_MOUNT_PATH;
   const volumeMounted = Boolean(volumeFromEnv && fs.existsSync(volumeFromEnv) && PERSIST_DIR === volumeFromEnv);
   const storageUsed = PERSIST_DIR;
@@ -565,7 +616,7 @@ app.get('/api/diag', (req, res) => {
 //
 // Remove or guard this endpoint before giving the dashboard to other people.
 // ─────────────────────────────────────────────────────────────────────────────
-app.post('/api/debug/reset-analytics', (req, res) => {
+app.post('/api/debug/reset-analytics', authMiddleware, (req, res) => {
   try {
     subscribers.clear();
     messageLog = [];
@@ -607,6 +658,11 @@ app.post('/api/debug/reset-analytics', (req, res) => {
 
 // Event Reporting API (For direct bot push updates)
 app.post('/api/events/report', (req, res) => {
+  const expected = process.env.DASHBOARD_INGEST_SECRET || '';
+  const given = req.get('x-dashboard-ingest-secret') || '';
+  if (!expected || !safeEqual(given, expected)) {
+    return res.status(401).json({ error: 'Invalid ingest secret' });
+  }
   const { event, user, chat, message, tokens, model, type } = req.body;
 
   if (!event) {
@@ -742,6 +798,7 @@ app.post('/api/events/report', (req, res) => {
 
 // SSE Event Stream for active dashboard interfaces
 app.get('/api/events/stream', (req, res) => {
+  if (!isAuthed(req)) return res.status(401).end();
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -881,14 +938,12 @@ app.get('/api/overview', authMiddleware, async (req, res) => {
       botUsername: botInfo?.username || '',
       botDescription: currentDesc || BOT_DESCRIPTION || '',
       isOnline: true,
-      // IMPORTANT: these four power the KPI display cards on Dashboard. We return CYCLE values so they auto "reset" visually at 2000.
-      // The accurate raw lifetime/windowed values are still computed but surfaced under raw* / in dedicated /analytics / /users endpoints.
-      messages30d: cycleMessages,
+      messages30d: rawMessages30d,
       messages24h,
-      subscribers: cycleSubscribers,
-      commandsFired: cycleCommands,
+      subscribers: subscribers.size,
+      commandsFired: commandsFiredRaw,
       activeMembers24h,
-      newUsers24h: cycleNewUsers,
+      newUsers24h,
       weekChange: parseFloat(weekChange),
       groupCount: groupChats.size,
       lastSync: lastSyncTime,
@@ -1229,7 +1284,8 @@ app.get('/api/settings', authMiddleware, async (req, res) => {
       lastErrorDate: webhook.last_error_date || 0,
       latency: syncLatency,
       endpoint: webhook.url ? 'Webhook' : 'Polling',
-      botToken: BOT_TOKEN,
+      botTokenSet: Boolean(BOT_TOKEN),
+      botTokenHint: maskToken(BOT_TOKEN),
     });
   } catch (err) {
     // Last-resort fallback — still surface the token so it can be saved/fixed from UI
@@ -1245,7 +1301,8 @@ app.get('/api/settings', authMiddleware, async (req, res) => {
       lastErrorDate: 0,
       latency: 0,
       endpoint: 'Polling',
-      botToken: BOT_TOKEN,
+      botTokenSet: Boolean(BOT_TOKEN),
+      botTokenHint: maskToken(BOT_TOKEN),
     });
   }
 });
@@ -1257,7 +1314,7 @@ app.post('/api/settings', authMiddleware, async (req, res) => {
     const logs = [];
 
     // 1. If Token is supplied, update bot credentials and api routing immediately
-    if (botToken && botToken !== BOT_TOKEN) {
+    if (botToken && !String(botToken).startsWith('••••') && botToken !== BOT_TOKEN) {
       BOT_TOKEN = botToken;
       TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
       if (BOT_TOKEN) {

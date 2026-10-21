@@ -15,7 +15,9 @@ import AnimationOverlay from './components/AnimationOverlay';
 import { Menu, X } from 'lucide-react';
 
 function ProtectedRoute({ children }) {
-  // Always let the user through without checking for a token
+  if (!localStorage.getItem('dashToken')) {
+    return <Navigate to="/login" replace />;
+  }
   return children;
 }
 
