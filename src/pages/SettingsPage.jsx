@@ -14,7 +14,7 @@ export default function SettingsPage() {
   const [botDisplayName, setBotDisplayName] = useState(() => localStorage.getItem('draft_botDisplayName') || '');
   const [botDescription, setBotDescription] = useState(() => localStorage.getItem('draft_botDescription') || '');
   const [webhookUrl, setWebhookUrl] = useState(() => localStorage.getItem('draft_webhookUrl') || '');
-  const [botToken, setBotToken] = useState(() => localStorage.getItem('stored_bot_token') || '');
+  const [botToken, setBotToken] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null); // { success: boolean, text: string }
   const [initialized, setInitialized] = useState(false);
@@ -25,7 +25,6 @@ export default function SettingsPage() {
   useEffect(() => {
     if (data && !initialized) {
       setInitialized(true);
-      const savedToken = localStorage.getItem('stored_bot_token');
       const draftName = localStorage.getItem('draft_botDisplayName');
       const draftDesc = localStorage.getItem('draft_botDescription');
       const draftWebhook = localStorage.getItem('draft_webhookUrl');
@@ -35,7 +34,8 @@ export default function SettingsPage() {
       setBotDisplayName(data.botDisplayName || draftName || '');
       setBotDescription(data.botDescription || draftDesc || '');
       setWebhookUrl(data.webhookUrl || draftWebhook || '');
-      setBotToken(savedToken || data.botToken || '');
+      setBotToken('');
+      localStorage.removeItem('stored_bot_token');
     }
   }, [data, initialized]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -46,9 +46,8 @@ export default function SettingsPage() {
       localStorage.setItem('draft_botDisplayName', botDisplayName);
       localStorage.setItem('draft_botDescription', botDescription);
       localStorage.setItem('draft_webhookUrl', webhookUrl);
-      localStorage.setItem('stored_bot_token', botToken);
     }
-  }, [botDisplayName, botDescription, webhookUrl, botToken, initialized]);
+  }, [botDisplayName, botDescription, webhookUrl, initialized]);
 
   const handleTest = async () => {
     setTesting(true);
@@ -60,6 +59,7 @@ export default function SettingsPage() {
   };
 
   const handleCopy = () => {
+    if (!botToken || botToken.startsWith('••••')) return;
     navigator.clipboard.writeText(botToken);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -83,7 +83,7 @@ export default function SettingsPage() {
       localStorage.removeItem('draft_botDisplayName');
       localStorage.removeItem('draft_botDescription');
       localStorage.removeItem('draft_webhookUrl');
-      localStorage.setItem('stored_bot_token', botToken);
+      setBotToken('');
       setSaveStatus({
         success: true,
         text: 'Changes saved successfully and updated on Telegram!',
@@ -191,10 +191,10 @@ export default function SettingsPage() {
           <div className="relative">
             <input
               type={showToken ? 'text' : 'password'}
-              required
               className="input-field font-mono pr-24"
               value={botToken}
               onChange={(e) => setBotToken(e.target.value)}
+              placeholder={d.botTokenSet ? `Saved ${d.botTokenHint || ''}. Leave blank to keep it.` : 'Paste the bot token from BotFather'}
             />
             <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
               <button type="button" onClick={() => setShowToken(!showToken)} className="text-text-muted hover:text-text-primary transition-colors">
@@ -205,7 +205,7 @@ export default function SettingsPage() {
               </button>
             </div>
           </div>
-          <p className="text-[11px] text-text-muted mt-1.5">Your token grants full access to the bot. Keep it private.</p>
+          <p className="text-[11px] text-text-muted mt-1.5">The full token stays on the server. Paste a new one only when you want to replace it.</p>
         </div>
 
         <div>

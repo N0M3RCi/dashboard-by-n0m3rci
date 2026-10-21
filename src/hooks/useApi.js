@@ -13,9 +13,11 @@ export function showToast(message, type = 'error', duration = 6000) {
 // Report errors to the server-side error log
 export function reportError(message, source = 'client', details = {}) {
   try {
+    const token = localStorage.getItem('dashToken');
+    if (!token) return;
     fetch('/api/errors', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer bypass-no-password' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ message, source, details }),
     }).catch(() => {});
   } catch { /* ignore */ }
@@ -31,9 +33,10 @@ export function useApi(endpoint, refreshInterval = 0) {
   const fetchedRef = useRef(false); // prevent duplicate initial fetches from StrictMode
 
   const fetchData = useCallback(async (isBackground = false, { signal } = {}) => {
-    const token = localStorage.getItem('dashToken') || 'bypass-no-password';
-    if (!localStorage.getItem('dashToken')) {
-      localStorage.setItem('dashToken', 'bypass-no-password');
+    const token = localStorage.getItem('dashToken');
+    if (!token) {
+      window.location.href = '/login';
+      return;
     }
 
     if (isBackground) setIsRefreshing(true);
@@ -113,11 +116,10 @@ export function useApi(endpoint, refreshInterval = 0) {
 }
 
 export async function apiPost(endpoint, body = {}) {
-  // Always post with bypass token if missing — guarantees saves /manual sync succeed and data refreshes even on direct visit.
-  let token = localStorage.getItem('dashToken');
+  const token = localStorage.getItem('dashToken');
   if (!token) {
-    token = 'bypass-no-password';
-    localStorage.setItem('dashToken', token);
+    window.location.href = '/login';
+    throw new Error('Login required');
   }
 
   let res;
